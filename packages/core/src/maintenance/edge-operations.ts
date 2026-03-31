@@ -99,10 +99,23 @@ export async function extractEdges(
 ): Promise<EntityEdge[]> {
   const llmClient = clients.llm_client;
 
-  // Build edge types context
+  // Build mapping from edge type name to list of valid node-type signatures
+  const edgeTypeSignaturesMap: Record<string, string[][]> = {};
+  for (const [signature, edgeTypeNames] of Object.entries(edgeTypeMap)) {
+    const sigParts = signature.split(',');
+    for (const edgeType of edgeTypeNames) {
+      if (!edgeTypeSignaturesMap[edgeType]) {
+        edgeTypeSignaturesMap[edgeType] = [];
+      }
+      edgeTypeSignaturesMap[edgeType]!.push(sigParts);
+    }
+  }
+
+  // Build edge types context including signatures
   const edgeTypesContext = edgeTypes
     ? Object.entries(edgeTypes).map(([typeName, typeDef]) => ({
         fact_type_name: typeName,
+        fact_type_signatures: edgeTypeSignaturesMap[typeName] ?? [['Entity', 'Entity']],
         fact_type_description: typeDef.description ?? `Edge type: ${typeName}`
       }))
     : [];
