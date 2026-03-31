@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.tgz
+.env
+.env.*
+!.env.test.example
+dump.rdb
+.DS_Store
+*.log
+*.tsbuildinfo

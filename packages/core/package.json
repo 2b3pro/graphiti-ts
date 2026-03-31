@@ -1,0 +1,26 @@
+{
+  "name": "@graphiti/core",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir dist --target node --format esm && tsc --emitDeclarationOnly",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.80.0",
+    "@google/generative-ai": "^0.24.1",
+    "@graphiti/shared": "workspace:*",
+    "falkordb": "^6.6.2",
+    "neo4j-driver": "^6.0.1",
+    "openai": "^4.60.0"
+  }
+}

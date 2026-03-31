@@ -1,0 +1,19 @@
+{
+  "name": "@graphiti/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir dist --target node --format esm && tsc --emitDeclarationOnly",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  }
+}
