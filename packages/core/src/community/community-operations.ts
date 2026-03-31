@@ -55,8 +55,9 @@ export function labelPropagation(
         .map(([community, count]) => ({ count, community }))
         .sort((a, b) => b.count - a.count || b.community - a.community);
 
-      const candidateRank = sorted.length > 0 ? sorted[0].count : 0;
-      const communityCandidate = sorted.length > 0 ? sorted[0].community : -1;
+      const first = sorted[0];
+      const candidateRank = first !== undefined ? first.count : 0;
+      const communityCandidate = first !== undefined ? first.community : -1;
 
       let newCommunity: number;
       if (communityCandidate !== -1 && candidateRank > 1) {
@@ -123,9 +124,10 @@ export async function getCommunityClusters(
       `,
       { routing: 'r' }
     );
+    const firstRecord = result.records[0];
     resolvedGroupIds =
-      result.records.length > 0
-        ? (getRecordValue<string[]>(result.records[0], 'group_ids') ?? [])
+      firstRecord !== undefined
+        ? (getRecordValue<string[]>(firstRecord, 'group_ids') ?? [])
         : [];
   }
 
@@ -233,7 +235,7 @@ export async function buildCommunity(
     const half = Math.floor(length / 2);
     const pairs: [string, string][] = [];
     for (let i = 0; i < half; i++) {
-      pairs.push([summaries[i], summaries[half + i]]);
+      pairs.push([summaries[i]!, summaries[half + i]!]);
     }
 
     const newSummaries = await Promise.all(
@@ -248,14 +250,18 @@ export async function buildCommunity(
     length = summaries.length;
   }
 
-  const summary = summaries[0];
+  const summary = summaries[0] ?? '';
   const name = await generateSummaryDescription(llmClient, summary);
   const now = utcNow();
+  const firstEntity = communityCluster[0];
+  if (firstEntity === undefined) {
+    throw new Error('communityCluster must not be empty');
+  }
 
   const communityNode: CommunityNode = {
     uuid: randomUUID(),
     name,
-    group_id: communityCluster[0].group_id,
+    group_id: firstEntity.group_id,
     labels: ['Community'],
     created_at: now,
     summary
@@ -334,8 +340,9 @@ export async function determineEntityCommunity(
     { params: { entity_uuid: entity.uuid }, routing: 'r' }
   );
 
-  if (existingResult.records.length > 0) {
-    return [mapCommunityNode(existingResult.records[0]), false];
+  const existingRecord = existingResult.records[0];
+  if (existingRecord !== undefined) {
+    return [mapCommunityNode(existingRecord), false];
   }
 
   // If not, find the mode community among neighbors
@@ -419,8 +426,9 @@ export async function updateCommunity(
   const communityEdges: CommunityEdge[] = [];
   if (isNew) {
     const edges = buildCommunityEdges([entity], community, utcNow());
-    await communityNamespace.edge.save(edges[0]);
-    communityEdges.push(edges[0]);
+    const firstEdge = edges[0]!;
+    await communityNamespace.edge.save(firstEdge);
+    communityEdges.push(firstEdge);
   }
 
   community.name_embedding = await embedder.create([community.name.replaceAll('\n', ' ')]);

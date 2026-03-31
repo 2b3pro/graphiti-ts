@@ -110,8 +110,8 @@ describe('buildCommunityEdges', () => {
     const cn: CommunityNode = { uuid: 'c1', name: 'C', group_id: 'g1', labels: ['Community'], created_at: utcNow(), summary: 's' };
     const edges = buildCommunityEdges([entity('e1', 'A', 'sa'), entity('e2', 'B', 'sb')], cn, utcNow());
     expect(edges).toHaveLength(2);
-    expect(edges[0].source_node_uuid).toBe('c1');
-    expect(edges[0].uuid).not.toBe(edges[1].uuid);
+    expect(edges[0]!.source_node_uuid).toBe('c1');
+    expect(edges[0]!.uuid).not.toBe(edges[1]!.uuid);
   });
 });
 
@@ -194,7 +194,7 @@ describe('updateCommunity', () => {
     };
     const [nodes, edges] = await updateCommunity(driver, fakeLLM(['{"summary":"Up"}', '{"description":"New"}']), { async create() { return [0.1]; } }, ns, entity('e1', 'A', 'New'));
     expect(nodes).toHaveLength(1);
-    expect(nodes[0].summary).toBe('Up');
+    expect(nodes[0]!.summary).toBe('Up');
     expect(edges).toHaveLength(1);
     expect(savedNode).not.toBeNull();
     expect(savedEdge).not.toBeNull();

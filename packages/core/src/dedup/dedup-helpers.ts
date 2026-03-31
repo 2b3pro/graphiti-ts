@@ -207,7 +207,8 @@ export function buildCandidateIndexes(existingNodes: EntityNode[]): DedupCandida
     const signature = minhashSignature(s);
     const bands = lshBands(signature);
     for (let bi = 0; bi < bands.length; bi++) {
-      const key = bandKey(bi, bands[bi]);
+      const band = bands[bi]!;
+      const key = bandKey(bi, band);
       const bucket = lshBuckets.get(key);
       if (bucket) {
         bucket.push(candidate.uuid);
@@ -241,7 +242,7 @@ export function resolveWithSimilarity(
   state: DedupResolutionState
 ): void {
   for (let idx = 0; idx < extractedNodes.length; idx++) {
-    const node = extractedNodes[idx];
+    const node = extractedNodes[idx]!;
     const normalizedExact = normalizeStringExact(node.name);
     const normalizedFuzzy = normalizeNameForFuzzy(node.name);
 
@@ -253,7 +254,7 @@ export function resolveWithSimilarity(
     // Exact match
     const existingMatches = indexes.normalizedExisting.get(normalizedExact) ?? [];
     if (existingMatches.length === 1) {
-      const match = existingMatches[0];
+      const match = existingMatches[0]!;
       state.resolvedNodes[idx] = match;
       state.uuidMap.set(node.uuid, match.uuid);
       if (match.uuid !== node.uuid) {
@@ -272,7 +273,8 @@ export function resolveWithSimilarity(
     const candidateIds = new Set<string>();
     const bands = lshBands(signature);
     for (let bi = 0; bi < bands.length; bi++) {
-      const key = bandKey(bi, bands[bi]);
+      const band = bands[bi]!;
+      const key = bandKey(bi, band);
       const bucket = indexes.lshBuckets.get(key);
       if (bucket) {
         for (const id of bucket) candidateIds.add(id);

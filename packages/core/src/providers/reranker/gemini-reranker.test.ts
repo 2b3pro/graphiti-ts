@@ -28,10 +28,10 @@ describe('GeminiRerankerClient', () => {
 
     expect(results).toHaveLength(3);
     // Sorted descending by score
-    expect(results[0][1]).toBeGreaterThanOrEqual(results[1][1]);
-    expect(results[1][1]).toBeGreaterThanOrEqual(results[2][1]);
+    expect(results[0]![1]).toBeGreaterThanOrEqual(results[1]![1]);
+    expect(results[1]![1]).toBeGreaterThanOrEqual(results[2]![1]);
     // 95/100 = 0.95
-    expect(results[0][1]).toBeCloseTo(0.95, 2);
+    expect(results[0]![1]).toBeCloseTo(0.95, 2);
   });
 
   test('single passage returns score 1.0', async () => {
@@ -60,9 +60,9 @@ describe('GeminiRerankerClient', () => {
     const results = await client.rank('query', ['passage1', 'passage2']);
     expect(results).toHaveLength(2);
     // passage2 (75) should rank higher than passage1 (0)
-    expect(results[0][0]).toBe('passage2');
-    expect(results[0][1]).toBeCloseTo(0.75, 2);
-    expect(results[1][1]).toBe(0);
+    expect(results[0]![0]).toBe('passage2');
+    expect(results[0]![1]).toBeCloseTo(0.75, 2);
+    expect(results[1]![1]).toBe(0);
   });
 
   test('clamps scores to [0, 1]', async () => {
@@ -71,8 +71,8 @@ describe('GeminiRerankerClient', () => {
     });
 
     const results = await client.rank('q', ['p1', 'p2']);
-    expect(results[0][1]).toBeLessThanOrEqual(1.0);
-    expect(results[1][1]).toBeGreaterThanOrEqual(0.0);
+    expect(results[0]![1]).toBeLessThanOrEqual(1.0);
+    expect(results[1]![1]).toBeGreaterThanOrEqual(0.0);
   });
 
   test('rate limit error is thrown', async () => {
