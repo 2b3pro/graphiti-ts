@@ -1,10 +1,10 @@
 # Graphiti TS
 
-Temporally-aware knowledge graphs for AI agents — in TypeScript.
+RAG retrieves documents. Agents need memory.
 
-Graphiti enables real-time, incremental construction of knowledge graphs from conversational and unstructured data. Unlike traditional RAG, Graphiti maintains a persistent, evolving graph that captures entities, relationships, and temporal context without batch recomputation.
+Traditional retrieval-augmented generation treats knowledge as a static pile of text chunks — no relationships, no timeline, no way to know that what was true last Tuesday isn't true today. Graphiti solves this by building a **temporally-aware knowledge graph** that agents can read and write in real time. Entities, relationships, and facts are extracted from conversations and documents, deduplicated, and wired into a graph that evolves with every interaction — no batch recomputation, no stale snapshots.
 
-This is a customized TypeScript port of and inspired by [getzep/graphiti](https://github.com/getzep/graphiti).
+This is a TypeScript port of [getzep/graphiti](https://github.com/getzep/graphiti), extended with edge quality scoring, epistemic status tracking, and confidence modeling for agents that need to reason about what they know and how certain they are.
 
 ## What's Different from the Python Original
 
