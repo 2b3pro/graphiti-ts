@@ -48,12 +48,17 @@ export class BGERerankerClient implements CrossEncoderClient {
       throw new Error(`BGE Reranker request failed: ${response.status} ${response.statusText}`);
     }
 
-    const data = (await response.json()) as {
-      results?: Array<{ index: number; score: number }>;
-    };
+    const raw = await response.json();
+
+    // Handle both formats:
+    // - TEI (text-embeddings-inference): flat array [{index, score}]
+    // - Wrapped format: {results: [{index, score}]}
+    const items: Array<{ index: number; score: number }> = Array.isArray(raw)
+      ? raw
+      : (raw as { results?: Array<{ index: number; score: number }> }).results ?? [];
 
     // Map results back to passages and sort by score descending
-    const scored: Array<[string, number]> = (data.results ?? []).map((r) => [
+    const scored: Array<[string, number]> = items.map((r) => [
       passages[r.index] ?? '',
       r.score
     ]);

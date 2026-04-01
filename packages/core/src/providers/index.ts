@@ -15,3 +15,4 @@ export * from './embedder/voyage-embedder';
 export * from './reranker/openai-reranker';
 export * from './reranker/gemini-reranker';
 export * from './reranker/bge-reranker';
+export * from './reranker/jina-reranker';
