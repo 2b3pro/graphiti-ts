@@ -54,7 +54,8 @@ export class Neo4jEntityEdgeOperations implements EntityEdgeOperations {
           e.episodes AS episodes,
           e.expired_at AS expired_at,
           e.valid_at AS valid_at,
-          e.invalid_at AS invalid_at
+          e.invalid_at AS invalid_at,
+          e.confidence AS confidence
       `,
       { params: { uuids }, routing: 'r' }
     );
@@ -99,7 +100,8 @@ export class Neo4jEntityEdgeOperations implements EntityEdgeOperations {
           e.episodes AS episodes,
           e.expired_at AS expired_at,
           e.valid_at AS valid_at,
-          e.invalid_at AS invalid_at
+          e.invalid_at AS invalid_at,
+          e.confidence AS confidence
       `,
       { params: { uuid }, routing: 'r' }
     );
@@ -131,7 +133,8 @@ export class Neo4jEntityEdgeOperations implements EntityEdgeOperations {
           e.episodes AS episodes,
           e.expired_at AS expired_at,
           e.valid_at AS valid_at,
-          e.invalid_at AS invalid_at
+          e.invalid_at AS invalid_at,
+          e.confidence AS confidence
       `,
       { params: { group_ids: groupIds }, routing: 'r' }
     );
@@ -160,7 +163,8 @@ export class Neo4jEntityEdgeOperations implements EntityEdgeOperations {
           e.episodes AS episodes,
           e.expired_at AS expired_at,
           e.valid_at AS valid_at,
-          e.invalid_at AS invalid_at
+          e.invalid_at AS invalid_at,
+          e.confidence AS confidence
       `,
       { params: { source_uuid: sourceNodeUuid, target_uuid: targetNodeUuid }, routing: 'r' }
     );
@@ -185,7 +189,8 @@ export class Neo4jEntityEdgeOperations implements EntityEdgeOperations {
           e.episodes AS episodes,
           e.expired_at AS expired_at,
           e.valid_at AS valid_at,
-          e.invalid_at AS invalid_at
+          e.invalid_at AS invalid_at,
+          e.confidence AS confidence
       `,
       { params: { node_uuid: nodeUuid }, routing: 'r' }
     );

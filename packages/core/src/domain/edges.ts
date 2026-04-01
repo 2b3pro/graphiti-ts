@@ -15,6 +15,43 @@ export interface EntityEdge extends Edge {
   invalid_at?: Date | null;
   expired_at?: Date | null;
   attributes?: Record<string, unknown>;
+
+  /**
+   * Confidence band: [low, mid, high] expressing uncertainty range.
+   * Example: [0.6, 0.8, 0.95] = "probably 0.8, could be as low as 0.6 or as high as 0.95"
+   * Default: null (backward-compatible, treated as [1.0, 1.0, 1.0] for existing edges)
+   */
+  confidence?: [number, number, number] | null;
+}
+
+/**
+ * Set a confidence band on an entity edge with validation.
+ * All values must be between 0.0 and 1.0, and low <= mid <= high.
+ * Returns the same edge reference with updated confidence.
+ */
+export function setConfidence(
+  edge: EntityEdge,
+  low: number,
+  mid: number,
+  high: number
+): EntityEdge {
+  if (!Number.isFinite(low) || !Number.isFinite(mid) || !Number.isFinite(high)) {
+    throw new Error('Confidence band values must be finite numbers');
+  }
+  if (low < 0 || mid < 0 || high < 0) {
+    throw new Error('Confidence band values must be >= 0.0');
+  }
+  if (low > 1 || mid > 1 || high > 1) {
+    throw new Error('Confidence band values must be <= 1.0');
+  }
+  if (low > mid) {
+    throw new Error(`Confidence band: low (${low}) must be <= mid (${mid})`);
+  }
+  if (mid > high) {
+    throw new Error(`Confidence band: mid (${mid}) must be <= high (${high})`);
+  }
+  edge.confidence = [low, mid, high];
+  return edge;
 }
 
 export interface EpisodicEdge extends Edge {}

@@ -1228,7 +1228,7 @@ export class Graphiti {
       RETURN e.uuid AS uuid, e.group_id AS group_id, source.uuid AS source_node_uuid,
              target.uuid AS target_node_uuid, e.created_at AS created_at,
              e.name AS name, e.fact AS fact, e.episodes AS episodes,
-             e.valid_at AS valid_at, e.invalid_at AS invalid_at
+             e.valid_at AS valid_at, e.invalid_at AS invalid_at, e.confidence AS confidence
       `,
       { params: { source_uuid: sourceUuid, target_uuid: targetUuid }, routing: 'r' }
     );
@@ -1243,7 +1243,10 @@ export class Graphiti {
       fact: (r.fact as string) ?? '',
       episodes: (r.episodes as string[]) ?? [],
       valid_at: r.valid_at ? new Date(r.valid_at as string) : null,
-      invalid_at: r.invalid_at ? new Date(r.invalid_at as string) : null
+      invalid_at: r.invalid_at ? new Date(r.invalid_at as string) : null,
+      confidence: Array.isArray(r.confidence) && (r.confidence as number[]).length === 3
+        ? (r.confidence as [number, number, number])
+        : null
     }));
   }
 

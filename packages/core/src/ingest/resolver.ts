@@ -183,7 +183,8 @@ async function resolveEdges(
         e.episodes AS episodes,
         e.expired_at AS expired_at,
         e.valid_at AS valid_at,
-        e.invalid_at AS invalid_at
+        e.invalid_at AS invalid_at,
+        e.confidence AS confidence
     `,
     {
       params: {

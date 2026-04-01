@@ -538,7 +538,8 @@ async function getEdgesBetweenNodes(
       e.episodes AS episodes,
       e.expired_at AS expired_at,
       e.valid_at AS valid_at,
-      e.invalid_at AS invalid_at
+      e.invalid_at AS invalid_at,
+      e.confidence AS confidence
     `,
     { params: { source_uuid: sourceUuid, target_uuid: targetUuid }, routing: 'r' }
   );
@@ -555,7 +556,10 @@ async function getEdgesBetweenNodes(
     episodes: (r.episodes as string[]) ?? [],
     expired_at: r.expired_at ? new Date(r.expired_at as string) : null,
     valid_at: r.valid_at ? new Date(r.valid_at as string) : null,
-    invalid_at: r.invalid_at ? new Date(r.invalid_at as string) : null
+    invalid_at: r.invalid_at ? new Date(r.invalid_at as string) : null,
+    confidence: Array.isArray(r.confidence) && (r.confidence as number[]).length === 3
+      ? (r.confidence as [number, number, number])
+      : null
   }));
 }
 

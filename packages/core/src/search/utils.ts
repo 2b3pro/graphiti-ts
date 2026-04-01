@@ -68,7 +68,8 @@ export async function getRelevantEdges(
         e.episodes AS episodes,
         e.expired_at AS expired_at,
         e.valid_at AS valid_at,
-        e.invalid_at AS invalid_at
+        e.invalid_at AS invalid_at,
+        e.confidence AS confidence
       LIMIT toInteger($limit)
     `,
     { params: { node_uuids: nodeUuids, limit }, routing: 'r' }
@@ -136,7 +137,8 @@ export async function getEdgeInvalidationCandidates(
         e.episodes AS episodes,
         e.expired_at AS expired_at,
         e.valid_at AS valid_at,
-        e.invalid_at AS invalid_at
+        e.invalid_at AS invalid_at,
+        e.confidence AS confidence
     `,
     {
       params: {

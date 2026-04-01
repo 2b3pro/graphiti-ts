@@ -82,7 +82,8 @@ export class FalkorSearchOperations implements SearchOperations {
           e.episodes AS episodes,
           e.expired_at AS expired_at,
           e.valid_at AS valid_at,
-          e.invalid_at AS invalid_at
+          e.invalid_at AS invalid_at,
+          e.confidence AS confidence
       `,
       {
         params,
@@ -160,7 +161,8 @@ export class FalkorSearchOperations implements SearchOperations {
           e.episodes AS episodes,
           e.expired_at AS expired_at,
           e.valid_at AS valid_at,
-          e.invalid_at AS invalid_at
+          e.invalid_at AS invalid_at,
+          e.confidence AS confidence
         ORDER BY e.name ASC, e.uuid ASC
         LIMIT $limit
       `,
@@ -265,7 +267,8 @@ export class FalkorSearchOperations implements SearchOperations {
           e.episodes AS episodes,
           e.expired_at AS expired_at,
           e.valid_at AS valid_at,
-          e.invalid_at AS invalid_at
+          e.invalid_at AS invalid_at,
+          e.confidence AS confidence
         ORDER BY e.name ASC, e.uuid ASC
         LIMIT $limit
       `,

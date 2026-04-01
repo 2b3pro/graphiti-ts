@@ -70,7 +70,8 @@ export class EntityEdgeNamespace {
           e.episodes AS episodes,
           e.expired_at AS expired_at,
           e.valid_at AS valid_at,
-          e.invalid_at AS invalid_at
+          e.invalid_at AS invalid_at,
+          e.confidence AS confidence
       `,
       { params: { uuid }, routing: 'r' }
     );
@@ -157,7 +158,8 @@ export class EntityEdgeNamespace {
           e.episodes AS episodes,
           e.expired_at AS expired_at,
           e.valid_at AS valid_at,
-          e.invalid_at AS invalid_at
+          e.invalid_at AS invalid_at,
+          e.confidence AS confidence
       `,
       { params: { uuids }, routing: 'r' }
     );
@@ -189,7 +191,8 @@ export class EntityEdgeNamespace {
           e.episodes AS episodes,
           e.expired_at AS expired_at,
           e.valid_at AS valid_at,
-          e.invalid_at AS invalid_at
+          e.invalid_at AS invalid_at,
+          e.confidence AS confidence
       `,
       { params: { group_ids: groupIds }, routing: 'r' }
     );
@@ -222,7 +225,8 @@ export class EntityEdgeNamespace {
           e.episodes AS episodes,
           e.expired_at AS expired_at,
           e.valid_at AS valid_at,
-          e.invalid_at AS invalid_at
+          e.invalid_at AS invalid_at,
+          e.confidence AS confidence
       `,
       { params: { source_uuid: sourceNodeUuid, target_uuid: targetNodeUuid }, routing: 'r' }
     );
@@ -252,7 +256,8 @@ export class EntityEdgeNamespace {
           e.episodes AS episodes,
           e.expired_at AS expired_at,
           e.valid_at AS valid_at,
-          e.invalid_at AS invalid_at
+          e.invalid_at AS invalid_at,
+          e.confidence AS confidence
       `,
       { params: { node_uuid: nodeUuid }, routing: 'r' }
     );
@@ -482,6 +487,12 @@ export function createEdgeNamespace(
 }
 
 export function mapEntityEdge(record: RecordLike): EntityEdge {
+  const rawConfidence = getRecordValue<number[] | null>(record, 'confidence');
+  const confidence: [number, number, number] | null =
+    Array.isArray(rawConfidence) && rawConfidence.length === 3
+      ? [rawConfidence[0] ?? 0, rawConfidence[1] ?? 0, rawConfidence[2] ?? 0]
+      : null;
+
   return {
     uuid: getRecordValue<string>(record, 'uuid') ?? '',
     group_id: getRecordValue<string>(record, 'group_id') ?? '',
@@ -494,7 +505,8 @@ export function mapEntityEdge(record: RecordLike): EntityEdge {
     episodes: getRecordValue<string[]>(record, 'episodes') ?? [],
     expired_at: parseDateValue(getRecordValue(record, 'expired_at')),
     valid_at: parseDateValue(getRecordValue(record, 'valid_at')),
-    invalid_at: parseDateValue(getRecordValue(record, 'invalid_at'))
+    invalid_at: parseDateValue(getRecordValue(record, 'invalid_at')),
+    confidence
   };
 }
 
