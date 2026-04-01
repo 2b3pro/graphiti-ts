@@ -80,7 +80,13 @@ export class Neo4jSearchOperations implements SearchOperations {
           e.expired_at AS expired_at,
           e.valid_at AS valid_at,
           e.invalid_at AS invalid_at,
-          e.confidence AS confidence
+          e.confidence AS confidence,
+          e.epistemic_status AS epistemic_status,
+          e.supported_by AS supported_by,
+          e.supports AS supports,
+          e.disputed_by AS disputed_by,
+          e.epistemic_history AS epistemic_history,
+          e.birth_score AS birth_score
       `,
       {
         params,
@@ -159,7 +165,13 @@ export class Neo4jSearchOperations implements SearchOperations {
           e.expired_at AS expired_at,
           e.valid_at AS valid_at,
           e.invalid_at AS invalid_at,
-          e.confidence AS confidence
+          e.confidence AS confidence,
+          e.epistemic_status AS epistemic_status,
+          e.supported_by AS supported_by,
+          e.supports AS supports,
+          e.disputed_by AS disputed_by,
+          e.epistemic_history AS epistemic_history,
+          e.birth_score AS birth_score
         ORDER BY e.name ASC, e.uuid ASC
         LIMIT toInteger($limit)
       `,
@@ -265,7 +277,13 @@ export class Neo4jSearchOperations implements SearchOperations {
           e.expired_at AS expired_at,
           e.valid_at AS valid_at,
           e.invalid_at AS invalid_at,
-          e.confidence AS confidence
+          e.confidence AS confidence,
+          e.epistemic_status AS epistemic_status,
+          e.supported_by AS supported_by,
+          e.supports AS supports,
+          e.disputed_by AS disputed_by,
+          e.epistemic_history AS epistemic_history,
+          e.birth_score AS birth_score
         ORDER BY e.name ASC, e.uuid ASC
         LIMIT toInteger($limit)
       `,

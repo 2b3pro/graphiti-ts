@@ -22,6 +22,27 @@ export interface EntityEdge extends Edge {
    * Default: null (backward-compatible, treated as [1.0, 1.0, 1.0] for existing edges)
    */
   confidence?: [number, number, number] | null;
+
+  /**
+   * Epistemic status: the epistemological standing of this edge's fact.
+   * Default: null (treated as 'fact' for backward compatibility)
+   */
+  epistemic_status?: import('./epistemic').EpistemicStatus | null;
+
+  /** Edge UUIDs that provide evidence FOR this edge's claim */
+  supported_by?: string[] | null;
+
+  /** Edge UUIDs that this edge provides evidence for */
+  supports?: string[] | null;
+
+  /** Edge UUIDs with contradicting claims */
+  disputed_by?: string[] | null;
+
+  /** Audit trail of epistemic status transitions (capped at 50 FIFO) */
+  epistemic_history?: import('./epistemic').EpistemicTransition[] | null;
+
+  /** Quality gate score recorded at edge creation time */
+  birth_score?: import('./epistemic').BirthScore | null;
 }
 
 /**

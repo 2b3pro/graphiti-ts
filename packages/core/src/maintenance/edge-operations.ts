@@ -539,7 +539,13 @@ async function getEdgesBetweenNodes(
       e.expired_at AS expired_at,
       e.valid_at AS valid_at,
       e.invalid_at AS invalid_at,
-      e.confidence AS confidence
+      e.confidence AS confidence,
+      e.epistemic_status AS epistemic_status,
+      e.supported_by AS supported_by,
+      e.supports AS supports,
+      e.disputed_by AS disputed_by,
+      e.epistemic_history AS epistemic_history,
+      e.birth_score AS birth_score
     `,
     { params: { source_uuid: sourceUuid, target_uuid: targetUuid }, routing: 'r' }
   );
@@ -559,7 +565,23 @@ async function getEdgesBetweenNodes(
     invalid_at: r.invalid_at ? new Date(r.invalid_at as string) : null,
     confidence: Array.isArray(r.confidence) && (r.confidence as number[]).length === 3
       ? (r.confidence as [number, number, number])
-      : null
+      : null,
+    epistemic_status: (r.epistemic_status as EntityEdge['epistemic_status']) ?? null,
+    supported_by: (r.supported_by as string[]) ?? null,
+    supports: (r.supports as string[]) ?? null,
+    disputed_by: (r.disputed_by as string[]) ?? null,
+    epistemic_history: (() => {
+      const raw = r.epistemic_history;
+      if (!raw) return null;
+      if (typeof raw === 'string') { try { return JSON.parse(raw); } catch { return null; } }
+      return raw;
+    })(),
+    birth_score: (() => {
+      const raw = r.birth_score;
+      if (!raw) return null;
+      if (typeof raw === 'string') { try { return JSON.parse(raw); } catch { return null; } }
+      return raw;
+    })(),
   }));
 }
 

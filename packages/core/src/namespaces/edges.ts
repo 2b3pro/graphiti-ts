@@ -2,6 +2,7 @@ import { EdgeNotFoundError, validateGroupId } from '@graphiti/shared';
 
 import type { EmbedderClient, GraphDriver } from '../contracts';
 import type { EntityEdge, EpisodicEdge } from '../domain/edges';
+import type { EpistemicStatus, EpistemicTransition, BirthScore } from '../domain/epistemic';
 import { getRecordValue, parseDateValue, type RecordLike } from '../utils/records';
 import { serializeForCypher } from '../utils/serialization';
 import type { EntityEdgeOperations } from '../driver/operations/entity-edge-operations';
@@ -71,7 +72,13 @@ export class EntityEdgeNamespace {
           e.expired_at AS expired_at,
           e.valid_at AS valid_at,
           e.invalid_at AS invalid_at,
-          e.confidence AS confidence
+          e.confidence AS confidence,
+          e.epistemic_status AS epistemic_status,
+          e.supported_by AS supported_by,
+          e.supports AS supports,
+          e.disputed_by AS disputed_by,
+          e.epistemic_history AS epistemic_history,
+          e.birth_score AS birth_score
       `,
       { params: { uuid }, routing: 'r' }
     );
@@ -159,7 +166,13 @@ export class EntityEdgeNamespace {
           e.expired_at AS expired_at,
           e.valid_at AS valid_at,
           e.invalid_at AS invalid_at,
-          e.confidence AS confidence
+          e.confidence AS confidence,
+          e.epistemic_status AS epistemic_status,
+          e.supported_by AS supported_by,
+          e.supports AS supports,
+          e.disputed_by AS disputed_by,
+          e.epistemic_history AS epistemic_history,
+          e.birth_score AS birth_score
       `,
       { params: { uuids }, routing: 'r' }
     );
@@ -192,7 +205,13 @@ export class EntityEdgeNamespace {
           e.expired_at AS expired_at,
           e.valid_at AS valid_at,
           e.invalid_at AS invalid_at,
-          e.confidence AS confidence
+          e.confidence AS confidence,
+          e.epistemic_status AS epistemic_status,
+          e.supported_by AS supported_by,
+          e.supports AS supports,
+          e.disputed_by AS disputed_by,
+          e.epistemic_history AS epistemic_history,
+          e.birth_score AS birth_score
       `,
       { params: { group_ids: groupIds }, routing: 'r' }
     );
@@ -226,7 +245,13 @@ export class EntityEdgeNamespace {
           e.expired_at AS expired_at,
           e.valid_at AS valid_at,
           e.invalid_at AS invalid_at,
-          e.confidence AS confidence
+          e.confidence AS confidence,
+          e.epistemic_status AS epistemic_status,
+          e.supported_by AS supported_by,
+          e.supports AS supports,
+          e.disputed_by AS disputed_by,
+          e.epistemic_history AS epistemic_history,
+          e.birth_score AS birth_score
       `,
       { params: { source_uuid: sourceNodeUuid, target_uuid: targetNodeUuid }, routing: 'r' }
     );
@@ -257,7 +282,13 @@ export class EntityEdgeNamespace {
           e.expired_at AS expired_at,
           e.valid_at AS valid_at,
           e.invalid_at AS invalid_at,
-          e.confidence AS confidence
+          e.confidence AS confidence,
+          e.epistemic_status AS epistemic_status,
+          e.supported_by AS supported_by,
+          e.supports AS supports,
+          e.disputed_by AS disputed_by,
+          e.epistemic_history AS epistemic_history,
+          e.birth_score AS birth_score
       `,
       { params: { node_uuid: nodeUuid }, routing: 'r' }
     );
@@ -493,6 +524,42 @@ export function mapEntityEdge(record: RecordLike): EntityEdge {
       ? [rawConfidence[0] ?? 0, rawConfidence[1] ?? 0, rawConfidence[2] ?? 0]
       : null;
 
+  // Epistemic fields — complex objects stored as JSON strings in Neo4j
+  const rawEpistemicHistory = getRecordValue<string | EpistemicTransition[] | null>(record, 'epistemic_history');
+  let epistemicHistory: EpistemicTransition[] | null = null;
+  if (rawEpistemicHistory) {
+    if (typeof rawEpistemicHistory === 'string') {
+      try {
+        const parsed = JSON.parse(rawEpistemicHistory) as EpistemicTransition[];
+        epistemicHistory = parsed.map((t) => ({
+          ...t,
+          timestamp: new Date(t.timestamp),
+        }));
+      } catch {
+        epistemicHistory = null;
+      }
+    } else if (Array.isArray(rawEpistemicHistory)) {
+      epistemicHistory = rawEpistemicHistory.map((t) => ({
+        ...t,
+        timestamp: t.timestamp instanceof Date ? t.timestamp : new Date(t.timestamp),
+      }));
+    }
+  }
+
+  const rawBirthScore = getRecordValue<string | BirthScore | null>(record, 'birth_score');
+  let birthScore: BirthScore | null = null;
+  if (rawBirthScore) {
+    if (typeof rawBirthScore === 'string') {
+      try {
+        birthScore = JSON.parse(rawBirthScore) as BirthScore;
+      } catch {
+        birthScore = null;
+      }
+    } else {
+      birthScore = rawBirthScore as BirthScore;
+    }
+  }
+
   return {
     uuid: getRecordValue<string>(record, 'uuid') ?? '',
     group_id: getRecordValue<string>(record, 'group_id') ?? '',
@@ -506,7 +573,13 @@ export function mapEntityEdge(record: RecordLike): EntityEdge {
     expired_at: parseDateValue(getRecordValue(record, 'expired_at')),
     valid_at: parseDateValue(getRecordValue(record, 'valid_at')),
     invalid_at: parseDateValue(getRecordValue(record, 'invalid_at')),
-    confidence
+    confidence,
+    epistemic_status: getRecordValue<EpistemicStatus | null>(record, 'epistemic_status') ?? null,
+    supported_by: getRecordValue<string[] | null>(record, 'supported_by') ?? null,
+    supports: getRecordValue<string[] | null>(record, 'supports') ?? null,
+    disputed_by: getRecordValue<string[] | null>(record, 'disputed_by') ?? null,
+    epistemic_history: epistemicHistory,
+    birth_score: birthScore,
   };
 }
 
