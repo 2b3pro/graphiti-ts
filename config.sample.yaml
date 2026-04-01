@@ -1,0 +1,207 @@
+# GraphMemory Configuration (Sample)
+# Copy to config.yaml and adjust values for your environment.
+# Read by config.ts at module load time. Changes take effect on next client creation.
+#
+# version: 1.0.0
+
+# ---------------------------------------------------------------------------
+# Neo4j — Graph database
+# ---------------------------------------------------------------------------
+neo4j:
+  uri: "bolt://localhost:7687"
+  user: "neo4j"
+  password: "your-password-here"
+  database: "neo4j"
+
+# ---------------------------------------------------------------------------
+# Ollama — Local embeddings (optional, for local embedding/LLM)
+# ---------------------------------------------------------------------------
+ollama:
+  base_url: "http://localhost:11434/v1"
+  embedding_model: "nomic-embed-text"
+  embedding_dim: 768
+  connectivity_timeout_ms: 3000
+
+# ---------------------------------------------------------------------------
+# Inference Gateway — OpenAI-compatible LLM proxy (optional)
+# ---------------------------------------------------------------------------
+inference_gateway:
+  base_url: "http://localhost:8960/v1"
+  api_key: "not-needed"
+  connectivity_timeout_ms: 5000
+
+# ---------------------------------------------------------------------------
+# LLM — Language model for extraction, resolution, dedup
+# fallback_order: Tried in sequence until one connects.
+#   "gateway"   = Inference Gateway (OpenAI-compatible proxy)
+#   "openai"    = Direct OpenAI API (needs OPENAI_API_KEY)
+#   "anthropic" = Direct Anthropic API (needs ANTHROPIC_API_KEY)
+#   "ollama"    = Local Ollama
+# ---------------------------------------------------------------------------
+llm:
+  fallback_order: ["anthropic", "openai", "ollama"]
+  gateway:
+    model: "your-gateway-model"
+    small_model: "your-gateway-small-model"
+  openai:
+    model: "gpt-4o-mini"
+    small_model: "gpt-4o-mini"
+  anthropic:
+    model: "claude-sonnet-4-6-latest"
+    small_model: "claude-haiku-4-5-latest"
+  ollama:
+    model: "llama3.2"
+    small_model: "llama3.2"
+    base_url: "http://localhost:11434/v1"
+
+# ---------------------------------------------------------------------------
+# Embedder — Vector embeddings for similarity search
+# fallback_order: Tried in sequence until one connects.
+#   "ollama" = Local Ollama (free)
+#   "jina"   = Jina Embeddings API (needs JINA_API_KEY)
+#   "openai" = OpenAI Embeddings API (needs OPENAI_API_KEY)
+# ---------------------------------------------------------------------------
+embedder:
+  fallback_order: ["ollama", "jina", "openai"]
+  ollama:
+    base_url: "http://localhost:11434/v1"
+    model: "nomic-embed-text"
+    dim: 768
+  jina:
+    model: "jina-embeddings-v3"
+    dim: 1024
+    # API key from JINA_API_KEY env var
+  openai:
+    model: "text-embedding-3-small"
+    dim: 1024
+
+# ---------------------------------------------------------------------------
+# Reranker — Cross-encoder for relevance scoring
+# fallback_order: Tried in sequence. Last resort: no reranker.
+# ---------------------------------------------------------------------------
+reranker:
+  fallback_order: ["jina", "openai"]
+  jina:
+    model: "jina-reranker-v3"
+    # API key from JINA_API_KEY env var
+  openai:
+    model: "gpt-4o-mini"
+  bge:
+    model: "BAAI/bge-reranker-v2-m3"
+    endpoint: "http://localhost:8787/rerank"
+
+# ---------------------------------------------------------------------------
+# Provider Defaults
+# Library-level defaults per provider. Useful reference for direct
+# graphiti-ts usage or future provider switching.
+# ---------------------------------------------------------------------------
+provider_defaults:
+  anthropic:
+    model: "claude-sonnet-4-6-latest"
+    small_model: "claude-haiku-4-5-latest"
+  openai:
+    model: "gpt-4o-mini"
+    small_model: "gpt-4o-mini"
+    embedding_model: "text-embedding-3-small"
+    embedding_dim: 1024
+    reranker_model: "gpt-4o-mini"
+  gemini:
+    model: "gemini-2.5-flash-preview"
+    small_model: "gemini-2.5-flash-preview"
+    embedding_model: "text-embedding-004"
+    reranker_model: "gemini-2.5-flash-lite"
+  groq:
+    model: "llama-3.3-70b-versatile"
+    small_model: "llama-3.1-8b-instant"
+    max_tokens: 2048
+  ollama:
+    model: "llama3.2"
+    small_model: "llama3.2"
+    base_url: "http://localhost:11434/v1"
+    embedding_model: "nomic-embed-text"
+    embedding_dim: 768
+  voyage:
+    model: "voyage-3"
+    embedding_dim: 1024
+  gliner2:
+    model: "gliner2-base-v1"
+    endpoint: "http://localhost:8080/extract"
+    threshold: 0.5
+  bge_reranker:
+    model: "BAAI/bge-reranker-v2-m3"
+    endpoint: "http://localhost:8787/rerank"
+
+# ---------------------------------------------------------------------------
+# Namespace
+# ---------------------------------------------------------------------------
+group_id: "my-memory"
+
+# ---------------------------------------------------------------------------
+# Scopes — Visibility arrays for edge isolation
+# ---------------------------------------------------------------------------
+scopes:
+  valid: ["default", "shared"]
+  default: ["default"]
+
+# ---------------------------------------------------------------------------
+# Birth Gate — Quality threshold for new edges
+# Weighted formula: persistence*3 + specificity*2 + novelty*2
+# Max possible: 21 (all 3s). Edges at or below threshold are dropped.
+# ---------------------------------------------------------------------------
+birth_gate:
+  threshold: 6
+  weights:
+    persistence: 3
+    specificity: 2
+    novelty: 2
+
+# ---------------------------------------------------------------------------
+# Session Hooks
+# ---------------------------------------------------------------------------
+hooks:
+  context_query:
+    timeout_ms: 3000
+    max_entities: 10
+    lookback_days: 7
+  session_ingest:
+    minimum_significance: 50
+    stdin_timeout_ms: 500
+
+# ---------------------------------------------------------------------------
+# Bootstrap — Bulk ingestion
+# ---------------------------------------------------------------------------
+bootstrap:
+  default_batch_size: 10
+  noise_patterns:
+    - "^Session [a-f0-9-]+ topics:"
+    - "^Session [a-f0-9-]+ scored \\d+/100"
+
+# ---------------------------------------------------------------------------
+# Search Defaults
+# ---------------------------------------------------------------------------
+search:
+  default_limit: 10
+  min_score: 0.6
+  mmr_lambda: 0.5
+  max_depth: 3
+
+# ---------------------------------------------------------------------------
+# LLM Defaults
+# ---------------------------------------------------------------------------
+llm_defaults:
+  max_tokens: 16384
+  temperature: 1
+  max_retries: 2
+
+# ---------------------------------------------------------------------------
+# Content Chunking
+# ---------------------------------------------------------------------------
+chunking:
+  chars_per_token: 4
+  default_chunk_size_tokens: 1000
+
+# ---------------------------------------------------------------------------
+# Graphiti Client Options
+# ---------------------------------------------------------------------------
+client:
+  store_raw_episode_content: true

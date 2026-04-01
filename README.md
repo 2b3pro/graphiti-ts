@@ -4,7 +4,7 @@ Temporally-aware knowledge graphs for AI agents — in TypeScript.
 
 Graphiti enables real-time, incremental construction of knowledge graphs from conversational and unstructured data. Unlike traditional RAG, Graphiti maintains a persistent, evolving graph that captures entities, relationships, and temporal context without batch recomputation.
 
-TypeScript port of [getzep/graphiti](https://github.com/getzep/graphiti).
+This is a customized TypeScript port of and inspired by [getzep/graphiti](https://github.com/getzep/graphiti).
 
 ## Why Graphiti
 
@@ -61,7 +61,7 @@ console.log(results.edges); // Relationships: Alice -> prefers -> morning standu
 | **Search** | Semantic, BM25 fulltext, graph traversal, community-based, combined hybrid |
 | **Bulk ingestion** | Parallel episode processing with cross-episode dedup |
 | **Observability** | OpenTelemetry distributed tracing |
-| **MCP server** | Model Context Protocol integration for AI assistants |
+| **MCP server** | [Model Context Protocol](https://modelcontextprotocol.io/) integration for AI assistants |
 
 ## Packages
 
@@ -98,6 +98,74 @@ const driver = new FalkorDriver({ host: 'localhost', port: 6379 });
 const graphiti = new Graphiti({ driver });
 ```
 
+## Prerequisites
+
+### Required
+
+| Dependency | Version | Description |
+|------------|---------|-------------|
+| [Neo4j](https://neo4j.com/) | 5.26+ | Graph database. Install via [Neo4j Desktop](https://neo4j.com/download/), Docker, or AuraDB cloud. |
+| [Bun](https://bun.sh/) | 1.0+ | JavaScript runtime and package manager (also supports Node.js via npm) |
+
+Or, alternatively to Neo4j:
+
+| Dependency | Version | Description |
+|------------|---------|-------------|
+| [FalkorDB](https://www.falkordb.com/) | 6.x | Redis-compatible graph database (alternative to Neo4j) |
+
+### LLM Providers (at least one required)
+
+An LLM is needed for entity extraction, deduplication, and resolution.
+
+| Provider | SDK | Models |
+|----------|-----|--------|
+| [OpenAI](https://platform.openai.com/) | `openai` ^4.60 | GPT-4o, GPT-4o-mini, etc. |
+| [Anthropic](https://console.anthropic.com/) | `@anthropic-ai/sdk` ^0.80 | Claude Sonnet, Haiku, etc. |
+| [Google Gemini](https://ai.google.dev/) | `@google/generative-ai` ^0.24 | Gemini 2.5 Flash, Pro, etc. |
+| [Groq](https://console.groq.com/) | `openai` (compatible) | Llama 3.3, Mixtral, etc. |
+| [Azure OpenAI](https://azure.microsoft.com/en-us/products/ai-services/openai-service) | `openai` (Azure config) | Azure-hosted OpenAI models |
+| [Ollama](https://ollama.ai/) | `openai` (compatible) | Any local model (Llama, Qwen, Mistral, etc.) |
+| Any OpenAI-compatible endpoint | `openai` (generic) | Via `OpenAIGenericClient` with custom `baseURL` |
+
+### Embedding Providers (at least one required)
+
+Vector embeddings power semantic similarity search.
+
+| Provider | Description |
+|----------|-------------|
+| [OpenAI Embeddings](https://platform.openai.com/docs/guides/embeddings) | `text-embedding-3-small` / `text-embedding-3-large` |
+| [Google Gemini Embeddings](https://ai.google.dev/gemini-api/docs/embeddings) | `text-embedding-004` |
+| [Voyage AI](https://www.voyageai.com/) | `voyage-3` (1024-dim) |
+| [Ollama](https://ollama.ai/) | Local embeddings, e.g. `nomic-embed-text` (768-dim) |
+| [Azure OpenAI Embeddings](https://learn.microsoft.com/en-us/azure/ai-services/openai/concepts/models#embeddings) | Azure-hosted OpenAI embedding models |
+
+### Reranker Providers (optional)
+
+Cross-encoder reranking improves search result relevance.
+
+| Provider | Description |
+|----------|-------------|
+| [Jina Reranker](https://jina.ai/reranker/) | `jina-reranker-v3` (API key via `JINA_API_KEY`) |
+| [OpenAI](https://platform.openai.com/) | LLM-based reranking |
+| [Google Gemini](https://ai.google.dev/) | LLM-based reranking |
+| [BGE Reranker](https://huggingface.co/BAAI/bge-reranker-v2-m3) | Self-hosted TEI endpoint (`BAAI/bge-reranker-v2-m3`) |
+
+### Entity Extraction (optional)
+
+| Provider | Description |
+|----------|-------------|
+| [GLiNER 2](https://github.com/urchade/GLiNER) | Self-hosted NER model for fast entity extraction without LLM calls |
+
+## Configuration
+
+Copy the sample config and edit for your environment:
+
+```bash
+cp config.sample.yaml config.yaml
+```
+
+See [`config.sample.yaml`](config.sample.yaml) for all available settings including LLM fallback chains, embedding providers, reranker configuration, search defaults, and quality gates.
+
 ## Environment Variables
 
 | Variable | Required | Description |
@@ -107,6 +175,7 @@ const graphiti = new Graphiti({ driver });
 | `GOOGLE_API_KEY` | For Gemini | Gemini models |
 | `GROQ_API_KEY` | For Groq | Groq-hosted models |
 | `VOYAGE_API_KEY` | For Voyage | Voyage AI embeddings |
+| `JINA_API_KEY` | For Jina | Jina reranker and embeddings |
 | `AZURE_OPENAI_API_KEY` | For Azure | Azure OpenAI endpoint |
 
 ## Development
