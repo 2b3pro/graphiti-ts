@@ -6,6 +6,23 @@ Graphiti enables real-time, incremental construction of knowledge graphs from co
 
 This is a customized TypeScript port of and inspired by [getzep/graphiti](https://github.com/getzep/graphiti).
 
+## What's Different from the Python Original
+
+This port tracks the upstream provider coverage (OpenAI, Anthropic, Gemini, Groq, Azure, Ollama, Voyage, GLiNER2, BGE) but adds several features not found in the original:
+
+| Feature | Description |
+|---------|-------------|
+| **Edge quality gate** | Weighted birth-gate scoring (persistence, specificity, novelty) that filters low-value edges at ingestion time. Configurable threshold and weights. |
+| **Epistemic status** | Nine-state lifecycle for edge assertions: `fact`, `claim`, `disputed`, `decision`, `opinion`, `hypothesis`, `observation`, `preference`, `deprecated`. Includes transition audit trail. |
+| **Evidence weight** | Computed strength metric based on supporting/disputing edge counts, with corroboration and contradiction tracking. |
+| **Confidence bands** | `[low, mid, high]` uncertainty ranges on edges, validated to 0.0-1.0 with low <= mid <= high. |
+| **Temporal search** | `searchAsOf(query, date)` for point-in-time graph queries against the bi-temporal model. |
+| **Jina reranker** | Cross-encoder reranking via the Jina Reranker API, alongside the ported BGE/OpenAI/Gemini rerankers. |
+| **YAML-driven config** | Centralized `config.yaml` with fallback chains for LLM, embedder, and reranker providers. |
+| **CJK-aware dedup** | Adaptive MinHash shingle sizes (n=2 for CJK scripts, n=3 for Latin) with proper Unicode range detection. |
+
+Removed from the Python original: Kuzu and Neptune graph backends (this port supports Neo4j and FalkorDB only).
+
 ## Why Graphiti
 
 - **Dynamic memory for agents** — Continuously ingest conversations, documents, and events into a structured knowledge graph that agents can query in real time
