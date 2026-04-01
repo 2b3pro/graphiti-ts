@@ -1936,6 +1936,45 @@ describe('Graphiti', () => {
 
     expect(results.episodes.map((episode) => episode.uuid)).toEqual(['episode-2']);
   });
+
+  test('searchAsOf delegates to searchEdges with temporal filters', async () => {
+    const driver = new Neo4jDriver(
+      {
+        uri: 'bolt://localhost:7687',
+        user: 'neo4j',
+        password: 'test'
+      },
+      new SearchFakeNeo4jClient()
+    );
+    const graphiti = new Graphiti({ driver });
+
+    const asOfDate = new Date('2026-03-15T00:00:00.000Z');
+    const edges = await graphiti.searchAsOf('alice', asOfDate, {
+      group_ids: ['group'],
+      num_results: 5
+    });
+
+    expect(edges).toHaveLength(1);
+    expect(edges[0].uuid).toBe('edge-1');
+    expect(edges[0].name).toBe('knows');
+  });
+
+  test('searchAsOf works without optional options', async () => {
+    const driver = new Neo4jDriver(
+      {
+        uri: 'bolt://localhost:7687',
+        user: 'neo4j',
+        password: 'test'
+      },
+      new SearchFakeNeo4jClient()
+    );
+    const graphiti = new Graphiti({ driver });
+
+    const asOfDate = new Date('2026-03-15T00:00:00.000Z');
+    const edges = await graphiti.searchAsOf('alice', asOfDate);
+
+    expect(edges).toHaveLength(1);
+  });
 });
 
 class FakeDriver implements GraphDriver {

@@ -1478,6 +1478,25 @@ export class Graphiti {
     return results.edges;
   }
 
+  async searchAsOf(
+    query: string,
+    asOfDate: Date,
+    options?: { group_ids?: string[] | null; num_results?: number }
+  ): Promise<SearchResults['edges']> {
+    return this.searchEdges(query, {
+      ...options,
+      search_filter: createSearchFilters({
+        valid_at: [[
+          { date: asOfDate, comparison_operator: '<=' },
+        ]],
+        invalid_at: [[
+          { date: asOfDate, comparison_operator: '>' },
+          { comparison_operator: 'IS NULL' },
+        ]],
+      }),
+    });
+  }
+
   async getNodesAndEdgesByEpisode(episodeUuids: string[]): Promise<SearchResults> {
     if (episodeUuids.length === 0) {
       return {
