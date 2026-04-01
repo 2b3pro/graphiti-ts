@@ -1,5 +1,4 @@
 import {
-  GraphProviders,
   type GraphProvider,
   validateNodeLabels
 } from '@graphiti/shared';
@@ -95,12 +94,7 @@ export function nodeSearchFilterQueryConstructor(
   if (filters.node_labels) {
     validateNodeLabels(filters.node_labels);
 
-    if (provider === GraphProviders.KUZU) {
-      filterQueries.push('list_has_all(n.labels, $labels)');
-      filterParams.labels = filters.node_labels;
-    } else {
-      filterQueries.push(`n:${filters.node_labels.join('|')}`);
-    }
+    filterQueries.push(`n:${filters.node_labels.join('|')}`);
   }
 
   return [filterQueries, filterParams];
@@ -126,13 +120,8 @@ export function edgeSearchFilterQueryConstructor(
   if (filters.node_labels) {
     validateNodeLabels(filters.node_labels);
 
-    if (provider === GraphProviders.KUZU) {
-      filterQueries.push('list_has_all(n.labels, $labels) AND list_has_all(m.labels, $labels)');
-      filterParams.labels = filters.node_labels;
-    } else {
-      const nodeLabels = filters.node_labels.join('|');
-      filterQueries.push(`n:${nodeLabels} AND m:${nodeLabels}`);
-    }
+    const nodeLabels = filters.node_labels.join('|');
+    filterQueries.push(`n:${nodeLabels} AND m:${nodeLabels}`);
   }
 
   appendDateFilters(filterQueries, filterParams, 'valid_at', filters.valid_at, 'e.valid_at');
