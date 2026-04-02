@@ -25,6 +25,8 @@ import { EDGE_HYBRID_SEARCH_RRF } from '../search/recipes';
 import { normalizeStringExact } from '../dedup/dedup-helpers';
 import { semaphoreGather } from '../utils/concurrency';
 import type { EntityTypeDefinition } from './node-operations';
+import { computeEvidenceWeight } from '../domain/epistemic';
+import { resolveContradiction as resolveContradictionGate, type ContradictionScores } from '../domain/deprecation-gate';
 
 /** Build a GenerateResponseContext from GraphitiClients. */
 function buildEdgeContext(clients: GraphitiClients): GenerateResponseContext {
@@ -487,7 +489,7 @@ export async function resolveExtractedEdge(
   return [resolvedEdge, [...preFilterInvalidated, ...invalidatedEdges]];
 }
 
-function resolveEdgeContradictions(
+export function resolveEdgeContradictions(
   resolvedEdge: EntityEdge,
   invalidationCandidates: EntityEdge[]
 ): EntityEdge[] {
@@ -513,16 +515,77 @@ function resolveEdgeContradictions(
       continue;
     }
 
-    // New edge invalidates old edge
+    // New edge invalidates old edge (temporal ordering)
     if (edge.valid_at && resolvedEdge.valid_at && edge.valid_at < resolvedEdge.valid_at) {
+      // --- Death gate: evidence-weighted resolution ---
+      const existingWeight = computeEvidenceWeight(edge);
+
+      // Heuristic contradiction scoring (synchronous, no LLM)
+      const scores: ContradictionScores = {
+        contradiction_strength: heuristicContradictionStrength(resolvedEdge),
+        source_authority: heuristicSourceAuthority(resolvedEdge),
+        corroboration_count: heuristicCorroborationCount(resolvedEdge),
+      };
+
+      const resolution = resolveContradictionGate(edge, resolvedEdge, scores, existingWeight);
+
+      if (resolution.action === 'keep_existing') continue;
+
+      if (resolution.action === 'dispute_both') {
+        // Don't invalidate — flag both sides as disputed
+        const disputed = { ...edge };
+        disputed.epistemic_status = 'disputed';
+        disputed.disputed_by = [...(disputed.disputed_by ?? []), resolvedEdge.uuid];
+        invalidatedEdges.push(disputed);
+
+        // Mark the resolved (contradicting) edge as disputed too — symmetric
+        resolvedEdge.epistemic_status = 'disputed';
+        resolvedEdge.disputed_by = [...(resolvedEdge.disputed_by ?? []), edge.uuid];
+        continue;
+      }
+
+      // deprecate_existing or replace — invalidate normally
       const invalidated = { ...edge };
       invalidated.invalid_at = resolvedEdge.valid_at;
       invalidated.expired_at = invalidated.expired_at ?? now;
+      invalidated.epistemic_status = 'deprecated';
       invalidatedEdges.push(invalidated);
     }
   }
 
   return invalidatedEdges;
+}
+
+/** Map resolvedEdge properties to contradiction_strength score (1-5) */
+function heuristicContradictionStrength(edge: EntityEdge): number {
+  const preFilterConfidence = (edge.attributes as Record<string, unknown>)?.negation_confidence;
+  if (preFilterConfidence === 'high') return 5;
+  if (preFilterConfidence === 'medium') return 3;
+  return 4; // LLM-detected contradiction: strong but not definitive
+}
+
+/** Map edge epistemic status to source_authority score (1-5) */
+function heuristicSourceAuthority(edge: EntityEdge): number {
+  switch (edge.epistemic_status) {
+    case 'fact':
+    case 'observation': return 5;
+    case 'decision': return 4;
+    case 'claim': return 3;
+    case 'opinion':
+    case 'preference': return 2;
+    case 'hypothesis': return 1;
+    default: return 3; // null/unknown defaults to moderate
+  }
+}
+
+/** Map supported_by count to corroboration_count score (1-5) */
+function heuristicCorroborationCount(edge: EntityEdge): number {
+  const count = edge.supported_by?.length ?? 0;
+  if (count >= 5) return 5;
+  if (count >= 3) return 4;
+  if (count >= 2) return 3;
+  if (count >= 1) return 2;
+  return 1;
 }
 
 async function extractEdgeAttributes(

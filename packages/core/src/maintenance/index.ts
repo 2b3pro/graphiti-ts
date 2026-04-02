@@ -19,6 +19,7 @@ export {
   resolveExtractedEdge,
   buildEpisodicEdges,
   resolveEdgePointers,
+  resolveEdgeContradictions,
   type EdgeTypeDefinition
 } from './edge-operations';
 
