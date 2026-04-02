@@ -16,6 +16,9 @@ This port tracks the upstream provider coverage (OpenAI, Anthropic, Gemini, Groq
 | **Epistemic status** | Nine-state lifecycle for edge assertions: `fact`, `claim`, `disputed`, `decision`, `opinion`, `hypothesis`, `observation`, `preference`, `deprecated`. Includes transition audit trail. |
 | **Evidence weight** | Computed strength metric based on supporting/disputing edge counts, with corroboration and contradiction tracking. |
 | **Confidence bands** | `[low, mid, high]` uncertainty ranges on edges, validated to 0.0-1.0 with low <= mid <= high. |
+| **Explicit deprecation** | `deprecateEdge()` and `deprecateEdges()` for manual fact invalidation with reason tracking, dry-run support, and tracer spans. |
+| **Negation pre-filter** | Regex-based pre-filter that skips LLM contradiction checks for obvious negations ("no longer uses", "deprecated", "replaced by"). HIGH confidence + entity overlap = deterministic invalidation. |
+| **Staleness scoring** | Query-time freshness signal (0.0–1.0) based on sigmoid age decay, reinforcement count, domain velocity, and recency. Never stored — computed on the fly. |
 | **Temporal search** | `searchAsOf(query, date)` for point-in-time graph queries against the bi-temporal model. |
 | **Jina reranker** | Cross-encoder reranking via the Jina Reranker API, alongside the ported BGE/OpenAI/Gemini rerankers. |
 | **YAML-driven config** | Centralized `config.yaml` with fallback chains for LLM, embedder, and reranker providers. |
@@ -222,7 +225,7 @@ bun run format
 ├── graphiti.ts          # Main Graphiti class — orchestrates ingestion and search
 ├── driver/              # Graph database drivers (Neo4j, FalkorDB)
 │   └── operations/      # Database operation interfaces
-├── maintenance/         # LLM-driven extraction, resolution, deduplication
+├── maintenance/         # LLM-driven extraction, resolution, deduplication, negation pre-filter
 ├── search/              # Hybrid search (semantic + BM25 + graph traversal)
 ├── prompts/             # LLM prompt templates
 ├── providers/           # LLM, embedder, and reranker provider clients
