@@ -23,6 +23,9 @@ This port tracks the upstream provider coverage (OpenAI, Anthropic, Gemini, Groq
 | **Jina reranker** | Cross-encoder reranking via the Jina Reranker API, alongside the ported BGE/OpenAI/Gemini rerankers. |
 | **YAML-driven config** | Centralized `config.yaml` with fallback chains for LLM, embedder, and reranker providers. |
 | **CJK-aware dedup** | Adaptive MinHash shingle sizes (n=2 for CJK scripts, n=3 for Latin) with proper Unicode range detection. |
+| **Conditional edges** | `EdgeCondition` type on entity edges — facts that are only true under specific conditions. Extraction prompt detects conditional language. Condition-aware search filters. |
+| **Contextual anchoring** | `anchored_by`/`anchors` fields tracking interpretive dependencies. `computeAnchorConfidence()` for graduated confidence erosion when anchors are removed. Multi-anchor `AnchoredInterpretation` for lens-based search. |
+| **Deprecation confidence gate** | Evidence-weighted contradiction resolution. Well-supported facts resist deprecation from weak contradictions. Four-tier scoring: ignore, dispute, deprecate, replace. |
 
 Removed from the Python original: Kuzu and Neptune graph backends (this port supports Neo4j and FalkorDB only).
 
