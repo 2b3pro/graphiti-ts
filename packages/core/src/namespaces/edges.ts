@@ -2,6 +2,7 @@ import { EdgeNotFoundError, validateGroupId } from '@graphiti/shared';
 
 import type { EmbedderClient, GraphDriver } from '../contracts';
 import type { EntityEdge, EpisodicEdge } from '../domain/edges';
+import type { AnchoredInterpretation } from '../domain/anchoring';
 import type { EdgeCondition } from '../domain/conditions';
 import type { EpistemicStatus, EpistemicTransition, BirthScore } from '../domain/epistemic';
 import { getRecordValue, parseDateValue, type RecordLike } from '../utils/records';
@@ -486,6 +487,28 @@ export function mapEntityEdge(record: RecordLike): EntityEdge {
     }
   }
 
+  // Interpretations — stored as JSON string in Neo4j
+  const rawInterpretations = getRecordValue<string | AnchoredInterpretation[] | null>(record, 'interpretations');
+  let interpretations: AnchoredInterpretation[] | null = null;
+  if (rawInterpretations) {
+    if (typeof rawInterpretations === 'string') {
+      try {
+        const parsed = JSON.parse(rawInterpretations) as AnchoredInterpretation[];
+        interpretations = parsed.map((interp) => ({
+          ...interp,
+          computed_at: new Date(interp.computed_at),
+        }));
+      } catch {
+        interpretations = null;
+      }
+    } else if (Array.isArray(rawInterpretations)) {
+      interpretations = rawInterpretations.map((interp) => ({
+        ...interp,
+        computed_at: interp.computed_at instanceof Date ? interp.computed_at : new Date(interp.computed_at),
+      }));
+    }
+  }
+
   return {
     uuid: getRecordValue<string>(record, 'uuid') ?? '',
     group_id: getRecordValue<string>(record, 'group_id') ?? '',
@@ -507,6 +530,9 @@ export function mapEntityEdge(record: RecordLike): EntityEdge {
     epistemic_history: epistemicHistory,
     birth_score: birthScore,
     conditions,
+    anchored_by: getRecordValue<string[] | null>(record, 'anchored_by') ?? null,
+    anchors: getRecordValue<string[] | null>(record, 'anchors') ?? null,
+    interpretations,
   };
 }
 

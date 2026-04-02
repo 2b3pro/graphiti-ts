@@ -46,6 +46,15 @@ export interface EntityEdge extends Edge {
 
   /** Conditions under which this edge is valid (null = unconditional) */
   conditions?: import('./conditions').EdgeCondition[] | null;
+
+  /** Edge UUIDs that provide interpretive context for this edge */
+  anchored_by?: string[] | null;
+
+  /** Edge UUIDs that this edge provides interpretive context for */
+  anchors?: string[] | null;
+
+  /** Computed interpretations derived from anchor edges */
+  interpretations?: import('./anchoring').AnchoredInterpretation[] | null;
 }
 
 /**

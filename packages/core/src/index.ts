@@ -1,4 +1,5 @@
 export * from './contracts';
+export * from './domain/anchoring';
 export * from './domain/common';
 export * from './domain/conditions';
 export * from './domain/edges';

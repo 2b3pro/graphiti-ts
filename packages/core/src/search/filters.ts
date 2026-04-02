@@ -43,6 +43,10 @@ export interface SearchFilters {
   edge_uuids?: string[] | null;
   property_filters?: PropertyFilter[] | null;
   condition_state?: ConditionStateFilter[] | null;
+  anchor_lens?: {
+    anchor_type?: import('../domain/anchoring').AnchorType;
+    anchor_uuid?: string;
+  } | null;
 }
 
 export function createSearchFilters(
@@ -62,6 +66,7 @@ export function createSearchFilters(
     edge_uuids: overrides.edge_uuids ?? null,
     property_filters: overrides.property_filters ?? null,
     condition_state: overrides.condition_state ?? null,
+    anchor_lens: overrides.anchor_lens ?? null,
   };
 }
 
@@ -168,6 +173,15 @@ export function edgeSearchFilterQueryConstructor(
         );
       }
     }
+  }
+
+  if (filters.anchor_lens) {
+    if (filters.anchor_lens.anchor_uuid) {
+      filterParams.anchor_uuid = filters.anchor_lens.anchor_uuid;
+      filterQueries.push('(e.anchored_by IS NOT NULL AND $anchor_uuid IN e.anchored_by)');
+    }
+    // anchor_type filtering requires inspecting interpretations JSON —
+    // done post-query in application code for both Neo4j and FalkorDB
   }
 
   // condition_state filtering is handled post-query in application code:

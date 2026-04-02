@@ -28,7 +28,10 @@ export const ENTITY_EDGE_FIELDS = `
   e.disputed_by AS disputed_by,
   e.epistemic_history AS epistemic_history,
   e.birth_score AS birth_score,
-  e.conditions AS conditions`.trim();
+  e.conditions AS conditions,
+  e.anchored_by AS anchored_by,
+  e.anchors AS anchors,
+  e.interpretations AS interpretations`.trim();
 
 /**
  * Standard RETURN fields for entity edge queries.
