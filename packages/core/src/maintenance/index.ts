@@ -29,3 +29,10 @@ export {
   dedupeEdgesBulk,
   type RawEpisode
 } from './bulk-utils';
+
+export {
+  detectNegation,
+  HIGH_CONFIDENCE_NEGATION,
+  MEDIUM_CONFIDENCE_NEGATION,
+  type NegationSignal,
+} from './negation';
