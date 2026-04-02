@@ -398,7 +398,6 @@ export class Graphiti {
       entities: hydratedEntities,
       entity_edges: [...resolvedExtraction.entity_edges, ...resolvedExtraction.invalidated_edges]
     });
-
     // Optionally rebuild communities after ingest
     if (input.update_communities && this.llm_client) {
       const communityResult = await this.buildCommunities([input.episode.group_id]);

@@ -365,7 +365,7 @@ describe('Graphiti', () => {
       ]
     });
     const extractor = new FakeEpisodeExtractor();
-    const graphiti = new Graphiti({ driver, episode_extractor: extractor });
+    const graphiti = new Graphiti({ driver, episode_extractor: extractor, llm_client: null, embedder: null, cross_encoder: null });
     const episodeTime = new Date('2026-03-30T12:00:00.000Z');
 
     const episode: EpisodicNode = {
@@ -1447,7 +1447,7 @@ describe('Graphiti', () => {
     const transaction = new FakeTransaction();
     const driver = new OrderedIngestFakeDriver(transaction);
     const extractor = new FakeEpisodeExtractor();
-    const graphiti = new Graphiti({ driver, episode_extractor: extractor });
+    const graphiti = new Graphiti({ driver, episode_extractor: extractor, llm_client: null, embedder: null, cross_encoder: null });
     const olderTime = new Date('2026-03-29T12:00:00.000Z');
     const newerTime = new Date('2026-03-30T12:00:00.000Z');
 
@@ -1499,7 +1499,7 @@ describe('Graphiti', () => {
     const transaction = new FakeTransaction();
     const driver = new FakeDriver(transaction);
     const extractor = new FakeEpisodeExtractor();
-    const graphiti = new Graphiti({ driver, episode_extractor: extractor });
+    const graphiti = new Graphiti({ driver, episode_extractor: extractor, llm_client: null, embedder: null, cross_encoder: null });
     const time1 = new Date('2026-03-29T12:00:00.000Z');
     const time2 = new Date('2026-03-30T12:00:00.000Z');
 
