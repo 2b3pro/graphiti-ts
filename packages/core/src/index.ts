@@ -39,6 +39,7 @@ export * from './driver/falkordb/falkordb-has-episode-edge-operations';
 export * from './driver/falkordb/falkordb-next-episode-edge-operations';
 export * from './driver/falkordb/falkordb-graph-maintenance-operations';
 export * from './driver/query-executor';
+export { ENTITY_EDGE_RETURN_FIELDS, ENTITY_EDGE_FIELDS } from './driver/cypher-fields';
 export * from './community/community-operations';
 export * from './dedup/dedup-helpers';
 export * from './dedup/union-find';

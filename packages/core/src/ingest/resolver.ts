@@ -7,6 +7,7 @@ import { mapEntityNode } from '../namespaces/nodes';
 import { cosineSimilarity } from '../search/ranking';
 import type { RecordLike } from '../utils/records';
 import type { EpisodeExtractionResult } from './extractor';
+import { ENTITY_EDGE_RETURN_FIELDS } from '../driver/cypher-fields';
 
 export interface EpisodeResolutionResult {
   entities: EntityNode[];
@@ -172,25 +173,7 @@ async function resolveEdges(
          (source.uuid = edge_key.target_node_uuid AND target.uuid = edge_key.source_node_uuid)) AND
         toLower(e.name) = edge_key.name_lower
       RETURN
-        e.uuid AS uuid,
-        e.group_id AS group_id,
-        source.uuid AS source_node_uuid,
-        target.uuid AS target_node_uuid,
-        e.created_at AS created_at,
-        e.name AS name,
-        e.fact AS fact,
-        e.fact_embedding AS fact_embedding,
-        e.episodes AS episodes,
-        e.expired_at AS expired_at,
-        e.valid_at AS valid_at,
-        e.invalid_at AS invalid_at,
-        e.confidence AS confidence,
-        e.epistemic_status AS epistemic_status,
-        e.supported_by AS supported_by,
-        e.supports AS supports,
-        e.disputed_by AS disputed_by,
-        e.epistemic_history AS epistemic_history,
-        e.birth_score AS birth_score
+        ${ENTITY_EDGE_RETURN_FIELDS}
     `,
     {
       params: {

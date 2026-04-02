@@ -12,6 +12,7 @@
 import { utcNow } from '@graphiti/shared';
 
 import type { GraphitiClients, LLMClient, EmbedderClient, GenerateResponseOptions } from '../contracts';
+import { ENTITY_EDGE_RETURN_FIELDS } from '../driver/cypher-fields';
 import { detectNegation } from './negation';
 import { generateResponse as defaultGenerateResponse, type GenerateResponseContext } from '../llm/generate-response';
 import type { EntityEdge, EpisodicEdge } from '../domain/edges';
@@ -561,25 +562,7 @@ async function getEdgesBetweenNodes(
     `
     MATCH (source:Entity {uuid: $source_uuid})-[e:RELATES_TO]->(target:Entity {uuid: $target_uuid})
     RETURN
-      e.uuid AS uuid,
-      e.group_id AS group_id,
-      source.uuid AS source_node_uuid,
-      target.uuid AS target_node_uuid,
-      e.created_at AS created_at,
-      e.name AS name,
-      e.fact AS fact,
-      e.fact_embedding AS fact_embedding,
-      e.episodes AS episodes,
-      e.expired_at AS expired_at,
-      e.valid_at AS valid_at,
-      e.invalid_at AS invalid_at,
-      e.confidence AS confidence,
-      e.epistemic_status AS epistemic_status,
-      e.supported_by AS supported_by,
-      e.supports AS supports,
-      e.disputed_by AS disputed_by,
-      e.epistemic_history AS epistemic_history,
-      e.birth_score AS birth_score
+      ${ENTITY_EDGE_RETURN_FIELDS}
     `,
     { params: { source_uuid: sourceUuid, target_uuid: targetUuid }, routing: 'r' }
   );

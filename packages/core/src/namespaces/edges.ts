@@ -9,6 +9,7 @@ import type { EntityEdgeOperations } from '../driver/operations/entity-edge-oper
 import type { EpisodicEdgeOperations } from '../driver/operations/episodic-edge-operations';
 import { FalkorDriver } from '../driver/falkordb-driver';
 import { Neo4jDriver } from '../driver/neo4j-driver';
+import { ENTITY_EDGE_RETURN_FIELDS } from '../driver/cypher-fields';
 
 export class EntityEdgeNamespace {
   constructor(
@@ -60,25 +61,7 @@ export class EntityEdgeNamespace {
       `
         MATCH (source:Entity)-[e:RELATES_TO {uuid: $uuid}]->(target:Entity)
         RETURN
-          e.uuid AS uuid,
-          e.group_id AS group_id,
-          source.uuid AS source_node_uuid,
-          target.uuid AS target_node_uuid,
-          e.created_at AS created_at,
-          e.name AS name,
-          e.fact AS fact,
-          e.fact_embedding AS fact_embedding,
-          e.episodes AS episodes,
-          e.expired_at AS expired_at,
-          e.valid_at AS valid_at,
-          e.invalid_at AS invalid_at,
-          e.confidence AS confidence,
-          e.epistemic_status AS epistemic_status,
-          e.supported_by AS supported_by,
-          e.supports AS supports,
-          e.disputed_by AS disputed_by,
-          e.epistemic_history AS epistemic_history,
-          e.birth_score AS birth_score
+          ${ENTITY_EDGE_RETURN_FIELDS}
       `,
       { params: { uuid }, routing: 'r' }
     );
@@ -154,25 +137,7 @@ export class EntityEdgeNamespace {
         MATCH (source:Entity)-[e:RELATES_TO]->(target:Entity)
         WHERE e.uuid IN $uuids
         RETURN
-          e.uuid AS uuid,
-          e.group_id AS group_id,
-          source.uuid AS source_node_uuid,
-          target.uuid AS target_node_uuid,
-          e.created_at AS created_at,
-          e.name AS name,
-          e.fact AS fact,
-          e.fact_embedding AS fact_embedding,
-          e.episodes AS episodes,
-          e.expired_at AS expired_at,
-          e.valid_at AS valid_at,
-          e.invalid_at AS invalid_at,
-          e.confidence AS confidence,
-          e.epistemic_status AS epistemic_status,
-          e.supported_by AS supported_by,
-          e.supports AS supports,
-          e.disputed_by AS disputed_by,
-          e.epistemic_history AS epistemic_history,
-          e.birth_score AS birth_score
+          ${ENTITY_EDGE_RETURN_FIELDS}
       `,
       { params: { uuids }, routing: 'r' }
     );
@@ -193,25 +158,7 @@ export class EntityEdgeNamespace {
         MATCH (source:Entity)-[e:RELATES_TO]->(target:Entity)
         WHERE e.group_id IN $group_ids
         RETURN
-          e.uuid AS uuid,
-          e.group_id AS group_id,
-          source.uuid AS source_node_uuid,
-          target.uuid AS target_node_uuid,
-          e.created_at AS created_at,
-          e.name AS name,
-          e.fact AS fact,
-          e.fact_embedding AS fact_embedding,
-          e.episodes AS episodes,
-          e.expired_at AS expired_at,
-          e.valid_at AS valid_at,
-          e.invalid_at AS invalid_at,
-          e.confidence AS confidence,
-          e.epistemic_status AS epistemic_status,
-          e.supported_by AS supported_by,
-          e.supports AS supports,
-          e.disputed_by AS disputed_by,
-          e.epistemic_history AS epistemic_history,
-          e.birth_score AS birth_score
+          ${ENTITY_EDGE_RETURN_FIELDS}
       `,
       { params: { group_ids: groupIds }, routing: 'r' }
     );
@@ -233,25 +180,7 @@ export class EntityEdgeNamespace {
         MATCH (source:Entity {uuid: $source_uuid})-[e:RELATES_TO]->(target:Entity {uuid: $target_uuid})
         WHERE e.expired_at IS NULL
         RETURN
-          e.uuid AS uuid,
-          e.group_id AS group_id,
-          source.uuid AS source_node_uuid,
-          target.uuid AS target_node_uuid,
-          e.created_at AS created_at,
-          e.name AS name,
-          e.fact AS fact,
-          e.fact_embedding AS fact_embedding,
-          e.episodes AS episodes,
-          e.expired_at AS expired_at,
-          e.valid_at AS valid_at,
-          e.invalid_at AS invalid_at,
-          e.confidence AS confidence,
-          e.epistemic_status AS epistemic_status,
-          e.supported_by AS supported_by,
-          e.supports AS supports,
-          e.disputed_by AS disputed_by,
-          e.epistemic_history AS epistemic_history,
-          e.birth_score AS birth_score
+          ${ENTITY_EDGE_RETURN_FIELDS}
       `,
       { params: { source_uuid: sourceNodeUuid, target_uuid: targetNodeUuid }, routing: 'r' }
     );
@@ -270,25 +199,7 @@ export class EntityEdgeNamespace {
         MATCH (source:Entity)-[e:RELATES_TO]->(target:Entity)
         WHERE source.uuid = $node_uuid OR target.uuid = $node_uuid
         RETURN
-          e.uuid AS uuid,
-          e.group_id AS group_id,
-          source.uuid AS source_node_uuid,
-          target.uuid AS target_node_uuid,
-          e.created_at AS created_at,
-          e.name AS name,
-          e.fact AS fact,
-          e.fact_embedding AS fact_embedding,
-          e.episodes AS episodes,
-          e.expired_at AS expired_at,
-          e.valid_at AS valid_at,
-          e.invalid_at AS invalid_at,
-          e.confidence AS confidence,
-          e.epistemic_status AS epistemic_status,
-          e.supported_by AS supported_by,
-          e.supports AS supports,
-          e.disputed_by AS disputed_by,
-          e.epistemic_history AS epistemic_history,
-          e.birth_score AS birth_score
+          ${ENTITY_EDGE_RETURN_FIELDS}
       `,
       { params: { node_uuid: nodeUuid }, routing: 'r' }
     );
