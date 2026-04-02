@@ -27,7 +27,8 @@ export const ENTITY_EDGE_FIELDS = `
   e.supports AS supports,
   e.disputed_by AS disputed_by,
   e.epistemic_history AS epistemic_history,
-  e.birth_score AS birth_score`.trim();
+  e.birth_score AS birth_score,
+  e.conditions AS conditions`.trim();
 
 /**
  * Standard RETURN fields for entity edge queries.

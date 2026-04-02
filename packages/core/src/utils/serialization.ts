@@ -23,6 +23,12 @@ export function serializeForCypher<T>(value: T): T {
         }
 
         if (Array.isArray(item)) {
+          // Neo4j only supports arrays of primitives — arrays containing objects
+          // must be stored as a single JSON string (same as plain objects on line 17)
+          const hasObjects = item.some((el) => el && typeof el === 'object' && !(el instanceof Date));
+          if (hasObjects) {
+            return [[key, JSON.stringify(item)]];
+          }
           return [[key, item.map((el) =>
             el instanceof Date ? el.toISOString() : el
           )]];
@@ -59,6 +65,14 @@ export function serializeForFalkor<T>(value: T): T {
 
         if (item && typeof item === 'object' && !(item instanceof Date) && !Array.isArray(item)) {
           return [[key, JSON.stringify(item)]];
+        }
+
+        if (Array.isArray(item)) {
+          // FalkorDB also only supports arrays of primitives — stringify arrays of objects
+          const hasObjects = item.some((el) => el && typeof el === 'object' && !(el instanceof Date));
+          if (hasObjects) {
+            return [[key, JSON.stringify(item)]];
+          }
         }
 
         return [[key, serializeForFalkor(item)]];

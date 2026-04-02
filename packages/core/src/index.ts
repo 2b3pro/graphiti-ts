@@ -1,5 +1,6 @@
 export * from './contracts';
 export * from './domain/common';
+export * from './domain/conditions';
 export * from './domain/edges';
 export * from './domain/epistemic';
 export * from './domain/edge-quality';

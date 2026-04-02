@@ -28,6 +28,11 @@ export interface PropertyFilter {
   comparison_operator: ComparisonOperator;
 }
 
+export interface ConditionStateFilter {
+  entity_uuid: string;
+  state: 'active' | 'inactive';
+}
+
 export interface SearchFilters {
   node_labels?: string[] | null;
   edge_types?: string[] | null;
@@ -37,6 +42,7 @@ export interface SearchFilters {
   expired_at?: DateFilter[][] | null;
   edge_uuids?: string[] | null;
   property_filters?: PropertyFilter[] | null;
+  condition_state?: ConditionStateFilter[] | null;
 }
 
 export function createSearchFilters(
@@ -54,7 +60,8 @@ export function createSearchFilters(
     created_at: overrides.created_at ?? null,
     expired_at: overrides.expired_at ?? null,
     edge_uuids: overrides.edge_uuids ?? null,
-    property_filters: overrides.property_filters ?? null
+    property_filters: overrides.property_filters ?? null,
+    condition_state: overrides.condition_state ?? null,
   };
 }
 
@@ -162,6 +169,11 @@ export function edgeSearchFilterQueryConstructor(
       }
     }
   }
+
+  // condition_state filtering is handled post-query in application code:
+  // conditions are stored as a JSON string in Neo4j/FalkorDB properties,
+  // so Cypher-level filtering would require APOC (Neo4j) or is impossible (FalkorDB).
+  // Callers should use evaluateConditions() from domain/conditions.ts to filter results.
 
   return [filterQueries, filterParams];
 }

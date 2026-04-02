@@ -43,6 +43,9 @@ export interface EntityEdge extends Edge {
 
   /** Quality gate score recorded at edge creation time */
   birth_score?: import('./epistemic').BirthScore | null;
+
+  /** Conditions under which this edge is valid (null = unconditional) */
+  conditions?: import('./conditions').EdgeCondition[] | null;
 }
 
 /**

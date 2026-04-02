@@ -2,6 +2,7 @@ import { EdgeNotFoundError, validateGroupId } from '@graphiti/shared';
 
 import type { EmbedderClient, GraphDriver } from '../contracts';
 import type { EntityEdge, EpisodicEdge } from '../domain/edges';
+import type { EdgeCondition } from '../domain/conditions';
 import type { EpistemicStatus, EpistemicTransition, BirthScore } from '../domain/epistemic';
 import { getRecordValue, parseDateValue, type RecordLike } from '../utils/records';
 import { serializeForCypher } from '../utils/serialization';
@@ -471,6 +472,20 @@ export function mapEntityEdge(record: RecordLike): EntityEdge {
     }
   }
 
+  const rawConditions = getRecordValue<string | EdgeCondition[] | null>(record, 'conditions');
+  let conditions: EdgeCondition[] | null = null;
+  if (rawConditions) {
+    if (typeof rawConditions === 'string') {
+      try {
+        conditions = JSON.parse(rawConditions) as EdgeCondition[];
+      } catch {
+        conditions = null;
+      }
+    } else if (Array.isArray(rawConditions)) {
+      conditions = rawConditions;
+    }
+  }
+
   return {
     uuid: getRecordValue<string>(record, 'uuid') ?? '',
     group_id: getRecordValue<string>(record, 'group_id') ?? '',
@@ -491,6 +506,7 @@ export function mapEntityEdge(record: RecordLike): EntityEdge {
     disputed_by: getRecordValue<string[] | null>(record, 'disputed_by') ?? null,
     epistemic_history: epistemicHistory,
     birth_score: birthScore,
+    conditions,
   };
 }
 
