@@ -5,6 +5,7 @@ export * from './domain/conditions';
 export * from './domain/edges';
 export * from './domain/epistemic';
 export * from './domain/edge-quality';
+export * from './domain/deprecation-gate';
 export * from './domain/staleness';
 export * from './domain/nodes';
 export * from './driver/falkordb-driver';
