@@ -12,6 +12,7 @@
 import { utcNow } from '@graphiti/shared';
 
 import type { GraphitiClients, LLMClient, EmbedderClient, GenerateResponseOptions } from '../contracts';
+import { detectNegation } from './negation';
 import { generateResponse as defaultGenerateResponse, type GenerateResponseContext } from '../llm/generate-response';
 import type { EntityEdge, EpisodicEdge } from '../domain/edges';
 import type { EntityNode, EpisodicNode } from '../domain/nodes';
@@ -368,10 +369,42 @@ export async function resolveExtractedEdge(
     }
   }
 
+  // --- Negation pre-filter: skip LLM for obvious contradictions ---
+  const preFilterInvalidated: EntityEdge[] = [];
+  const preFilterSkippedIndices = new Set<number>();
+  const preFilterNow = utcNow();
+
+  for (let i = 0; i < existingEdges.length; i++) {
+    const existing = existingEdges[i]!;
+    // Shared entities = node UUID overlap between new and existing edge
+    const sharedEntities: string[] = [];
+    if (extractedEdge.source_node_uuid === existing.source_node_uuid) sharedEntities.push('source');
+    if (extractedEdge.target_node_uuid === existing.target_node_uuid) sharedEntities.push('target');
+    if (extractedEdge.source_node_uuid === existing.target_node_uuid) sharedEntities.push('source-target');
+    if (extractedEdge.target_node_uuid === existing.source_node_uuid) sharedEntities.push('target-source');
+
+    const signal = detectNegation(extractedEdge.fact, existing.fact, sharedEntities);
+
+    if (signal.confidence === 'high') {
+      // Deterministic invalidation — skip LLM for this pair
+      const invalidated = { ...existing };
+      invalidated.invalid_at = extractedEdge.valid_at ?? preFilterNow;
+      invalidated.expired_at = invalidated.expired_at ?? preFilterNow;
+      preFilterInvalidated.push(invalidated);
+      preFilterSkippedIndices.add(i);
+    }
+    // MEDIUM: leave in existingEdges for LLM to evaluate
+    // NONE: leave in existingEdges, LLM may still find contradictions
+  }
+
+  // Remove pre-filtered edges from the LLM's invalidation candidate batch
+  const filteredExistingEdges = existingEdges.filter((_, i) => !preFilterSkippedIndices.has(i));
+  // --- End negation pre-filter ---
+
   // LLM resolution
   const relatedEdgesContext = relatedEdges.map((e, i) => ({ idx: i, fact: e.fact }));
   const invalidationIdxOffset = relatedEdges.length;
-  const invalidationContext = existingEdges.map((e, i) => ({
+  const invalidationContext = filteredExistingEdges.map((e, i) => ({
     idx: invalidationIdxOffset + i,
     fact: e.fact
   }));
@@ -419,13 +452,13 @@ export async function resolveExtractedEdge(
 
   // Process contradictions
   const invalidationCandidates: EntityEdge[] = [];
-  const maxValidIdx = relatedEdges.length + existingEdges.length - 1;
+  const maxValidIdx = relatedEdges.length + filteredExistingEdges.length - 1;
 
   for (const idx of contradictedFacts) {
     if (idx >= 0 && idx < relatedEdges.length) {
       invalidationCandidates.push(relatedEdges[idx]!);
     } else if (idx >= invalidationIdxOffset && idx <= maxValidIdx) {
-      invalidationCandidates.push(existingEdges[idx - invalidationIdxOffset]!);
+      invalidationCandidates.push(filteredExistingEdges[idx - invalidationIdxOffset]!);
     }
   }
 
@@ -449,7 +482,8 @@ export async function resolveExtractedEdge(
   // Determine contradictions
   const invalidatedEdges = resolveEdgeContradictions(resolvedEdge, invalidationCandidates);
 
-  return [resolvedEdge, invalidatedEdges];
+  // Merge pre-filter invalidations with LLM-detected invalidations
+  return [resolvedEdge, [...preFilterInvalidated, ...invalidatedEdges]];
 }
 
 function resolveEdgeContradictions(
