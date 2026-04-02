@@ -3247,6 +3247,110 @@ class SearchEpisodeFakeNeo4jClient {
   async close(): Promise<void> {}
 }
 
+// ---------------------------------------------------------------------------
+// deprecateEdge / deprecateEdges unit tests
+// ---------------------------------------------------------------------------
+
+function makeEntityEdge(overrides: Partial<EntityEdge> = {}): EntityEdge {
+  return {
+    uuid: 'edge-dep-1',
+    group_id: 'group',
+    source_node_uuid: 'node-1',
+    target_node_uuid: 'node-2',
+    created_at: new Date('2024-01-01T00:00:00Z'),
+    name: 'knows',
+    fact: 'Alice knows Bob',
+    ...overrides,
+  };
+}
+
+function createTestGraphiti(edge: EntityEdge) {
+  let savedEdge: EntityEdge | null = null;
+  let saveCalled = false;
+  const graphiti = Object.create(Graphiti.prototype) as Graphiti;
+  (graphiti as any).edges = {
+    entity: {
+      getByUuid: async (_uuid: string) => edge,
+      save: async (e: EntityEdge) => {
+        savedEdge = e;
+        saveCalled = true;
+        return e;
+      },
+    },
+  };
+  (graphiti as any).tracer = { startSpan: () => ({ span: {}, close: () => {} }) };
+  return { graphiti, getSavedEdge: () => savedEdge, wasSaveCalled: () => saveCalled };
+}
+
+describe('Graphiti.deprecateEdge', () => {
+  test('sets invalid_at and expired_at on a valid edge', async () => {
+    const edge = makeEntityEdge();
+    const { graphiti, getSavedEdge } = createTestGraphiti(edge);
+
+    const before = new Date();
+    await graphiti.deprecateEdge('edge-dep-1');
+    const after = new Date();
+
+    const saved = getSavedEdge()!;
+    expect(saved).not.toBeNull();
+    expect(saved.invalid_at).toBeInstanceOf(Date);
+    expect(saved.expired_at).toBeInstanceOf(Date);
+    expect(saved.invalid_at!.getTime()).toBeGreaterThanOrEqual(before.getTime());
+    expect(saved.invalid_at!.getTime()).toBeLessThanOrEqual(after.getTime());
+    expect(saved.invalid_at!.getTime()).toBe(saved.expired_at!.getTime());
+  });
+
+  test('stores reason in attributes when provided', async () => {
+    const edge = makeEntityEdge();
+    const { graphiti, getSavedEdge } = createTestGraphiti(edge);
+
+    await graphiti.deprecateEdge('edge-dep-1', { reason: 'outdated info' });
+
+    const saved = getSavedEdge()!;
+    expect(saved.attributes?.deprecation_reason).toBe('outdated info');
+  });
+
+  test('stores superseded_by in attributes when provided', async () => {
+    const edge = makeEntityEdge();
+    const { graphiti, getSavedEdge } = createTestGraphiti(edge);
+
+    await graphiti.deprecateEdge('edge-dep-1', { superseded_by: 'edge-new-99' });
+
+    const saved = getSavedEdge()!;
+    expect(saved.attributes?.superseded_by).toBe('edge-new-99');
+  });
+
+  test('is idempotent — already deprecated edges are no-ops (save NOT called)', async () => {
+    const alreadyDeprecated = makeEntityEdge({
+      invalid_at: new Date('2024-06-01T00:00:00Z'),
+      expired_at: new Date('2024-06-01T00:00:00Z'),
+    });
+    const { graphiti, wasSaveCalled } = createTestGraphiti(alreadyDeprecated);
+
+    await graphiti.deprecateEdge('edge-dep-1');
+
+    expect(wasSaveCalled()).toBe(false);
+  });
+
+  test('uses custom deprecated_at date when provided', async () => {
+    const edge = makeEntityEdge();
+    const { graphiti, getSavedEdge } = createTestGraphiti(edge);
+
+    const customDate = new Date('2025-03-15T12:00:00Z');
+    await graphiti.deprecateEdge('edge-dep-1', { deprecated_at: customDate });
+
+    const saved = getSavedEdge()!;
+    expect(saved.invalid_at?.toISOString()).toBe(customDate.toISOString());
+    expect(saved.expired_at?.toISOString()).toBe(customDate.toISOString());
+  });
+});
+
+describe('Graphiti.deprecateEdges', () => {
+  test('has deprecateEdges method', () => {
+    expect(typeof Graphiti.prototype.deprecateEdges).toBe('function');
+  });
+});
+
 function graphitiCrossEncoderScore(query: string, passage: string): number {
   if (query === 'alice' && passage.includes('about Alice')) {
     return 0.95;

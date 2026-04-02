@@ -3,6 +3,7 @@ export * from './domain/common';
 export * from './domain/edges';
 export * from './domain/epistemic';
 export * from './domain/edge-quality';
+export * from './domain/staleness';
 export * from './domain/nodes';
 export * from './driver/falkordb-driver';
 export * from './driver/falkordb/falkordb-entity-edge-operations';
@@ -97,6 +98,10 @@ export {
   extractNodesAndEdgesBulk,
   dedupeNodesBulk,
   dedupeEdgesBulk,
-  type RawEpisode
+  type RawEpisode,
+  detectNegation,
+  HIGH_CONFIDENCE_NEGATION,
+  MEDIUM_CONFIDENCE_NEGATION,
+  type NegationSignal,
 } from './maintenance/index';
 export * from './search/utils';

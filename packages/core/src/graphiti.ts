@@ -1293,6 +1293,141 @@ export class Graphiti {
     await this.edges.entity.deleteByUuid(uuid);
   }
 
+  /**
+   * Mark a single entity edge as deprecated (soft-delete).
+   *
+   * Idempotent: if the edge already has both `invalid_at` and `expired_at`
+   * set, this method returns without touching the database.
+   *
+   * @param edgeUuid - UUID of the edge to deprecate
+   * @param options.reason - Human-readable reason stored in attributes
+   * @param options.superseded_by - UUID of the edge that replaces this one
+   * @param options.deprecated_at - Override the deprecation timestamp (default: now)
+   */
+  async deprecateEdge(
+    edgeUuid: string,
+    options?: {
+      reason?: string;
+      superseded_by?: string;
+      deprecated_at?: Date;
+    }
+  ): Promise<void> {
+    const scope = this.tracer.startSpan('deprecate_edge');
+    try {
+      const edge = await this.edges.entity.getByUuid(edgeUuid);
+
+      // Idempotent: already deprecated
+      if (edge.invalid_at && edge.expired_at) {
+        return;
+      }
+
+      const deprecatedAt = options?.deprecated_at ?? new Date();
+      edge.invalid_at = deprecatedAt;
+      edge.expired_at = deprecatedAt;
+
+      edge.attributes = edge.attributes ?? {};
+      if (options?.reason !== undefined) {
+        edge.attributes.deprecation_reason = options.reason;
+      }
+      if (options?.superseded_by !== undefined) {
+        edge.attributes.superseded_by = options.superseded_by;
+      }
+
+      await this.edges.entity.save(edge);
+    } finally {
+      scope.close();
+    }
+  }
+
+  /**
+   * Bulk-deprecate entity edges matching a filter.
+   *
+   * Only edges that are NOT already deprecated (`invalid_at IS NULL`) are
+   * affected. Pass `dryRun: true` to count candidates without writing.
+   *
+   * @returns `{ count }` — number of edges (would-be-)deprecated
+   */
+  async deprecateEdges(
+    filter: {
+      entity_name?: string;
+      edge_type?: string;
+      older_than?: Date;
+      group_id?: string;
+    },
+    options?: {
+      reason?: string;
+      deprecated_at?: Date;
+      dryRun?: boolean;
+    }
+  ): Promise<{ count: number }> {
+    const scope = this.tracer.startSpan('deprecate_edges');
+    try {
+      const whereClauses: string[] = ['e.invalid_at IS NULL'];
+      const params: Record<string, unknown> = {};
+
+      if (filter.entity_name !== undefined) {
+        whereClauses.push('(source.name = $entity_name OR target.name = $entity_name)');
+        params.entity_name = filter.entity_name;
+      }
+      if (filter.edge_type !== undefined) {
+        whereClauses.push('e.name = $edge_type');
+        params.edge_type = filter.edge_type;
+      }
+      if (filter.older_than !== undefined) {
+        whereClauses.push('e.created_at < $older_than');
+        params.older_than = filter.older_than;
+      }
+      if (filter.group_id !== undefined) {
+        whereClauses.push('e.group_id = $group_id');
+        params.group_id = filter.group_id;
+      }
+
+      const whereStr = whereClauses.join(' AND ');
+
+      if (options?.dryRun) {
+        const result = await this.driver.executeQuery<{ count: unknown }>(
+          `MATCH (source:Entity)-[e:RELATES_TO]->(target:Entity)
+           WHERE ${whereStr}
+           RETURN count(e) AS count`,
+          { params, routing: 'r' }
+        );
+        const raw = result.records[0]?.count ?? 0;
+        const count =
+          typeof raw === 'object' && raw !== null && 'low' in raw
+            ? (raw as { low: number }).low
+            : (raw as number);
+        return { count };
+      }
+
+      const deprecatedAt = options?.deprecated_at ?? new Date();
+      const setClauses = [
+        'e.invalid_at = $deprecated_at',
+        'e.expired_at = $deprecated_at',
+      ];
+      if (options?.reason !== undefined) {
+        setClauses.push('e.deprecation_reason = $deprecation_reason');
+        params.deprecation_reason = options.reason;
+      }
+      params.deprecated_at = deprecatedAt;
+
+      const result = await this.driver.executeQuery<{ count: unknown }>(
+        `MATCH (source:Entity)-[e:RELATES_TO]->(target:Entity)
+         WHERE ${whereStr}
+         SET ${setClauses.join(', ')}
+         RETURN count(e) AS count`,
+        { params, routing: 'w' }
+      );
+      const raw = result.records[0]?.count ?? 0;
+      const count =
+        typeof raw === 'object' && raw !== null && 'low' in raw
+          ? (raw as { low: number }).low
+          : (raw as number);
+      return { count };
+    } finally {
+      scope.close();
+    }
+  }
+
   async deleteEpisode(uuid: string): Promise<void> {
     await this.nodes.episode.deleteByUuid(uuid);
   }

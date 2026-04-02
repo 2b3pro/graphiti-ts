@@ -1,10 +1,11 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, it, test } from 'bun:test';
 import { utcNow } from '@graphiti/shared';
 
 import type { LLMClient } from '../contracts';
 import type { EntityEdge, EpisodicEdge } from '../domain/edges';
 import type { EntityNode, EpisodicNode } from '../domain/nodes';
 import type { Message } from '../prompts/types';
+import { detectNegation } from './negation';
 
 import {
   buildEpisodicEdges,
@@ -407,6 +408,176 @@ describe('resolveExtractedEdge', () => {
     expect(invalidated[0]!.uuid).toBe('old-existing');
   });
 
+  test('pre-filter: HIGH confidence with shared entities bypasses LLM invalidation', async () => {
+    // LLM should NOT be called for the invalidation of the existing edge when
+    // the negation pre-filter already handled it deterministically.
+    let llmCallCount = 0;
+    const llmClient: LLMClient = {
+      model: 'test-model',
+      small_model: 'test-small',
+      setTracer: () => {},
+      generateText: async (_messages: Message[]) => {
+        llmCallCount++;
+        return JSON.stringify({ duplicate_facts: [], contradicted_facts: [] });
+      }
+    };
+
+    // Shared source + target UUIDs → node overlap for pre-filter
+    const extracted = makeEdge('new-1', 's1', 't1', 'PAI no longer uses Redis for caching', {
+      valid_at: new Date('2024-06-01')
+    });
+    const existing = makeEdge('old-1', 's1', 't1', 'PAI uses Redis for caching', {
+      valid_at: new Date('2024-01-01')
+    });
+    const episode = makeEpisode();
+
+    const [_resolved, invalidated] = await resolveExtractedEdge(
+      llmClient,
+      extracted,
+      [],          // no related edges (skip exact-match fast path)
+      [existing],
+      episode
+    );
+
+    // Pre-filter should have invalidated the existing edge directly
+    expect(invalidated).toHaveLength(1);
+    expect(invalidated[0]!.uuid).toBe('old-1');
+    expect(invalidated[0]!.invalid_at).toBeDefined();
+  });
+
+  test('pre-filter: MEDIUM confidence edges still route through LLM', async () => {
+    let llmCallCount = 0;
+    const llmClient: LLMClient = {
+      model: 'test-model',
+      small_model: 'test-small',
+      setTracer: () => {},
+      generateText: async (_messages: Message[]) => {
+        llmCallCount++;
+        return JSON.stringify({ duplicate_facts: [], contradicted_facts: [] });
+      }
+    };
+
+    const extracted = makeEdge('new-1', 's1', 't1', 'Using Qdrant instead of Redis for vectors', {
+      valid_at: new Date('2024-06-01')
+    });
+    const existing = makeEdge('old-1', 's1', 't1', 'PAI uses Redis for caching', {
+      valid_at: new Date('2024-01-01')
+    });
+    const episode = makeEpisode();
+
+    await resolveExtractedEdge(
+      llmClient,
+      extracted,
+      [],
+      [existing],
+      episode
+    );
+
+    // MEDIUM confidence should pass existing edge to LLM — so LLM was called
+    expect(llmCallCount).toBeGreaterThan(0);
+  });
+
+  test('pre-filter: NO_SIGNAL leaves edges for LLM evaluation', async () => {
+    let llmCallCount = 0;
+    const llmClient: LLMClient = {
+      model: 'test-model',
+      small_model: 'test-small',
+      setTracer: () => {},
+      generateText: async (_messages: Message[]) => {
+        llmCallCount++;
+        return JSON.stringify({ duplicate_facts: [], contradicted_facts: [] });
+      }
+    };
+
+    const extracted = makeEdge('new-1', 's1', 't1', 'PAI added PostgreSQL support');
+    const existing = makeEdge('old-1', 's1', 't1', 'PAI uses Redis for caching');
+    const episode = makeEpisode();
+
+    await resolveExtractedEdge(
+      llmClient,
+      extracted,
+      [],
+      [existing],
+      episode
+    );
+
+    // No negation signal — existing edge should still go to LLM
+    expect(llmCallCount).toBeGreaterThan(0);
+  });
+
+  test('pre-filter: no entity overlap downgrades HIGH to MEDIUM (routes to LLM)', async () => {
+    let llmCallCount = 0;
+    const llmClient: LLMClient = {
+      model: 'test-model',
+      small_model: 'test-small',
+      setTracer: () => {},
+      generateText: async (_messages: Message[]) => {
+        llmCallCount++;
+        return JSON.stringify({ duplicate_facts: [], contradicted_facts: [] });
+      }
+    };
+
+    // Different source AND target UUIDs → no entity overlap
+    const extracted = makeEdge('new-1', 's1', 't1', 'PAI no longer uses Redis for caching', {
+      valid_at: new Date('2024-06-01')
+    });
+    const existing = makeEdge('old-1', 's2', 't2', 'SomeOtherSystem uses Redis', {
+      valid_at: new Date('2024-01-01')
+    });
+    const episode = makeEpisode();
+
+    const [_resolved, invalidated] = await resolveExtractedEdge(
+      llmClient,
+      extracted,
+      [],
+      [existing],
+      episode
+    );
+
+    // No shared entities → HIGH downgraded to MEDIUM → LLM called, not pre-filtered
+    expect(llmCallCount).toBeGreaterThan(0);
+    // Pre-filter should NOT have invalidated
+    expect(invalidated).toHaveLength(0);
+  });
+
+  test('pre-filter: HIGH confidence invalidated edges merged with LLM results', async () => {
+    const llmClient: LLMClient = {
+      model: 'test-model',
+      small_model: 'test-small',
+      setTracer: () => {},
+      generateText: async (_messages: Message[]) => {
+        // LLM contradicts the first related edge (idx=0)
+        return JSON.stringify({ duplicate_facts: [], contradicted_facts: [0] });
+      }
+    };
+
+    const extracted = makeEdge('new-1', 's1', 't1', 'PAI no longer uses Redis for caching', {
+      valid_at: new Date('2024-06-01')
+    });
+    // One related edge (goes through LLM path), one existing edge with shared entities (pre-filter)
+    const related = makeEdge('rel-1', 's1', 't1', 'PAI uses Redis for caching', {
+      valid_at: new Date('2023-01-01')
+    });
+    const existing = makeEdge('existing-1', 's1', 't1', 'PAI caches with Redis', {
+      valid_at: new Date('2024-01-01')
+    });
+    const episode = makeEpisode();
+
+    const [_resolved, invalidated] = await resolveExtractedEdge(
+      llmClient,
+      extracted,
+      [related],
+      [existing],
+      episode
+    );
+
+    // Pre-filter invalidates existing-1; LLM contradicts rel-1
+    // Both should appear in invalidated list
+    const uuids = invalidated.map((e) => e.uuid);
+    expect(uuids).toContain('existing-1');
+    expect(uuids).toContain('rel-1');
+  });
+
   test('extracts edge attributes when edge type has fields', async () => {
     const llmClient = makeMockLLMClient([
       { salary: 100000, department: 'Engineering' }
@@ -434,5 +605,38 @@ describe('resolveExtractedEdge', () => {
     );
 
     expect(resolved.attributes).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// negation pre-filter integration (standalone signal checks)
+// ---------------------------------------------------------------------------
+
+describe('negation pre-filter integration', () => {
+  it('HIGH confidence with entity overlap produces direct invalidation', () => {
+    const signal = detectNegation(
+      'PAI no longer uses Redis for caching',
+      'PAI uses Redis for caching',
+      ['source', 'target']  // simulating shared node UUIDs
+    );
+    expect(signal.confidence).toBe('high');
+  });
+
+  it('MEDIUM confidence routes to LLM (not deterministic)', () => {
+    const signal = detectNegation(
+      'Using Qdrant instead of Redis for vectors',
+      'PAI uses Redis for caching',
+      ['target']
+    );
+    expect(signal.confidence).toBe('medium');
+  });
+
+  it('NO_SIGNAL skips contradiction check entirely', () => {
+    const signal = detectNegation(
+      'PAI added PostgreSQL support',
+      'PAI uses Redis for caching',
+      ['source']
+    );
+    expect(signal.confidence).toBe('none');
   });
 });
