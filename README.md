@@ -22,6 +22,7 @@ This port tracks the upstream provider coverage (OpenAI, Anthropic, Gemini, Groq
 | **Temporal search** | `searchAsOf(query, date)` for point-in-time graph queries against the bi-temporal model. |
 | **Jina reranker** | Cross-encoder reranking via the Jina Reranker API, alongside the ported BGE/OpenAI/Gemini rerankers. |
 | **YAML-driven config** | Centralized `config.yaml` with fallback chains for LLM, embedder, and reranker providers. |
+| **GDS Leiden community detection** | Automatic Neo4j GDS integration for community detection. Uses Leiden algorithm (milliseconds, in-database) when GDS plugin is installed; falls back to application-level label propagation when not. Batched LLM summarization reduces community naming from N-1 calls per community to a few batched calls total. |
 | **CJK-aware dedup** | Adaptive MinHash shingle sizes (n=2 for CJK scripts, n=3 for Latin) with proper Unicode range detection. |
 | **Conditional edges** | `EdgeCondition` type on entity edges — facts that are only true under specific conditions. Extraction prompt detects conditional language. Condition-aware search filters. |
 | **Contextual anchoring** | `anchored_by`/`anchors` fields tracking interpretive dependencies. `computeAnchorConfidence()` for graduated confidence erosion when anchors are removed. Multi-anchor `AnchoredInterpretation` for lens-based search. |
@@ -111,6 +112,30 @@ Requires Neo4j 5.26+. Install via [Neo4j Desktop](https://neo4j.com/download/) o
 ```bash
 docker run -p 7474:7474 -p 7687:7687 -e NEO4J_AUTH=neo4j/password neo4j:5
 ```
+
+#### Neo4j Graph Data Science (optional, recommended)
+
+For high-quality community detection, install the [Neo4j GDS](https://neo4j.com/docs/graph-data-science/current/) plugin. Graphiti automatically detects GDS and uses the Leiden algorithm for community clustering — orders of magnitude faster than the fallback label propagation, with better cluster quality (modularity-optimized, hierarchical).
+
+```bash
+# Download GDS Community Edition (free) for your Neo4j version
+curl -L -o neo4j-gds.jar https://github.com/neo4j/graph-data-science/releases/download/2.27.0/neo4j-graph-data-science-2.27.0.jar
+
+# Copy to Neo4j plugins directory
+docker cp neo4j-gds.jar neo4j:/var/lib/neo4j/plugins/
+
+# Add to neo4j.conf
+docker exec neo4j bash -c 'echo "dbms.security.procedures.unrestricted=gds.*" >> /var/lib/neo4j/conf/neo4j.conf'
+docker exec neo4j bash -c 'echo "dbms.security.procedures.allowlist=gds.*" >> /var/lib/neo4j/conf/neo4j.conf'
+
+# Restart Neo4j
+docker restart neo4j
+
+# Verify
+docker exec neo4j cypher-shell -u neo4j -p password 'RETURN gds.version()'
+```
+
+Without GDS, `buildCommunities()` falls back to application-level label propagation (slower but functional).
 
 ### FalkorDB
 
@@ -232,7 +257,7 @@ bun run format
 ├── search/              # Hybrid search (semantic + BM25 + graph traversal)
 ├── prompts/             # LLM prompt templates
 ├── providers/           # LLM, embedder, and reranker provider clients
-├── community/           # Community detection (label propagation + LLM summarization)
+├── community/           # Community detection (GDS Leiden / label propagation fallback + batched LLM summarization)
 └── utils/               # Concurrency, text processing, content chunking
 ```
 

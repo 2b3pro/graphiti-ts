@@ -8,9 +8,26 @@ import type { CommunityNode, EntityNode } from '../domain/nodes';
 import type { RecordLike } from '../utils/records';
 import { getRecordValue } from '../utils/records';
 import { mapCommunityNode } from '../namespaces/communities';
-import { summarizePairPrompt, summaryDescriptionPrompt } from './prompts';
+import {
+  summarizePairPrompt,
+  summaryDescriptionPrompt,
+  batchSummarizePrompt,
+  batchNamePrompt,
+} from './prompts';
 
-export const MAX_COMMUNITY_BUILD_CONCURRENCY = 10;
+export const MAX_COMMUNITY_BUILD_CONCURRENCY = 2;
+
+/**
+ * Max member summaries to include per community in a batched LLM call.
+ * Communities larger than this get their summaries truncated to the first N members.
+ */
+const MAX_MEMBERS_PER_SUMMARY = 30;
+
+/**
+ * Max communities to batch in a single LLM call for summarization or naming.
+ * Controls prompt size — each community adds ~100-200 tokens.
+ */
+const MAX_BATCH_SIZE = 40;
 
 export interface Neighbor {
   node_uuid: string;
@@ -166,6 +183,107 @@ export async function getCommunityClusters(
 }
 
 // ---------------------------------------------------------------------------
+// GDS Leiden Community Detection (preferred over label propagation)
+// ---------------------------------------------------------------------------
+
+/**
+ * Check if Neo4j GDS plugin is available.
+ */
+async function hasGDS(driver: GraphDriver): Promise<boolean> {
+  try {
+    const result = await driver.executeQuery<RecordLike>(
+      `RETURN gds.version() AS version`,
+      { routing: 'r' }
+    );
+    return result.records.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Detect communities using Neo4j GDS Leiden algorithm.
+ * Returns clusters as arrays of entity UUIDs. Filters out singleton communities.
+ *
+ * Requires: Neo4j GDS plugin installed, RELATES_TO edges in graph.
+ */
+export async function getCommunityClustersGDS(
+  driver: GraphDriver,
+  entityNodes: EntityNodeNamespaceReader,
+  groupIds: string[] | null
+): Promise<EntityNode[][]> {
+  const graphName = `community-detection-${Date.now()}`;
+
+  let resolvedGroupIds = groupIds;
+  if (resolvedGroupIds === null) {
+    const result = await driver.executeQuery<RecordLike>(
+      `MATCH (n:Entity) WHERE n.group_id IS NOT NULL
+       RETURN collect(DISTINCT n.group_id) AS group_ids`,
+      { routing: 'r' }
+    );
+    const firstRecord = result.records[0];
+    resolvedGroupIds = firstRecord !== undefined
+      ? (getRecordValue<string[]>(firstRecord, 'group_ids') ?? [])
+      : [];
+  }
+
+  const allClusters: EntityNode[][] = [];
+
+  for (const groupId of resolvedGroupIds) {
+    // Project graph for this group
+    try {
+      await driver.executeQuery(
+        `CALL gds.graph.project($name,
+          {Entity: {properties: [], label: 'Entity'}},
+          {RELATES_TO: {orientation: 'UNDIRECTED', type: 'RELATES_TO'}},
+          {nodeFilter: 'n.group_id = "' + groupId + '"'}
+        )`,
+        { params: { name: graphName } }
+      );
+    } catch {
+      // nodeFilter syntax varies by GDS version — try without filter
+      await driver.executeQuery(
+        `CALL gds.graph.project($name, 'Entity',
+          {RELATES_TO: {orientation: 'UNDIRECTED'}})`,
+        { params: { name: graphName } }
+      );
+    }
+
+    try {
+      // Run Leiden
+      const result = await driver.executeQuery<RecordLike>(
+        `CALL gds.leiden.stream($name)
+         YIELD nodeId, communityId
+         WITH communityId, collect(gds.util.asNode(nodeId).uuid) AS uuids, count(*) AS size
+         WHERE size > 1
+         RETURN uuids`,
+        { params: { name: graphName } }
+      );
+
+      for (const record of result.records) {
+        const uuids = getRecordValue<string[]>(record, 'uuids') ?? [];
+        if (uuids.length > 0) {
+          const entities = await entityNodes.getByUuids(uuids);
+          if (entities.length > 0) {
+            allClusters.push(entities);
+          }
+        }
+      }
+    } finally {
+      // Always drop projection
+      try {
+        await driver.executeQuery(
+          `CALL gds.graph.drop($name)`,
+          { params: { name: graphName } }
+        );
+      } catch { /* already dropped or never created */ }
+    }
+  }
+
+  return allClusters;
+}
+
+// ---------------------------------------------------------------------------
 // LLM Summarization
 // ---------------------------------------------------------------------------
 
@@ -175,6 +293,38 @@ function parseJsonField(text: string, field: string): string {
     return typeof parsed[field] === 'string' ? parsed[field] : text.trim();
   } catch {
     return text.trim();
+  }
+}
+
+function parseJsonArray(text: string, field: string): string[] {
+  try {
+    // Try direct parse
+    let parsed = JSON.parse(text);
+    // Handle wrapper object: { "results": [...] }
+    if (!Array.isArray(parsed) && typeof parsed === 'object' && parsed !== null) {
+      // Find the first array field
+      for (const val of Object.values(parsed)) {
+        if (Array.isArray(val)) {
+          parsed = val;
+          break;
+        }
+      }
+    }
+    if (Array.isArray(parsed)) {
+      return parsed.map((item: unknown) => {
+        if (typeof item === 'string') return item;
+        if (typeof item === 'object' && item !== null && field in item) {
+          return String((item as Record<string, unknown>)[field]);
+        }
+        return String(item);
+      });
+    }
+    return [];
+  } catch {
+    // Try to extract JSON from markdown code fences
+    const match = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (match) return parseJsonArray(match[1]!, field);
+    return [];
   }
 }
 
@@ -194,6 +344,82 @@ export async function generateSummaryDescription(
   const messages = summaryDescriptionPrompt(summary);
   const response = await llmClient.generateText(messages);
   return parseJsonField(response, 'description');
+}
+
+/**
+ * Summarize multiple communities in a single LLM call.
+ * Each community is represented by its member entity summaries.
+ * Returns one summary per community, in order.
+ */
+export async function batchSummarize(
+  llmClient: LLMClient,
+  communities: string[][]
+): Promise<string[]> {
+  if (communities.length === 0) return [];
+  if (communities.length === 1 && communities[0]!.length <= 2) {
+    // Single community with 1-2 members — use simple pair summarization
+    const summaries = communities[0]!;
+    if (summaries.length === 1) return [summaries[0]!];
+    return [await summarizePair(llmClient, [summaries[0]!, summaries[1]!])];
+  }
+
+  const messages = batchSummarizePrompt(communities);
+  const response = await llmClient.generateText(messages);
+  const results = parseJsonArray(response, 'summary');
+
+  // Validate we got the right count
+  if (results.length !== communities.length) {
+    // Fallback: summarize each community individually
+    const fallback: string[] = [];
+    for (const memberSummaries of communities) {
+      if (memberSummaries.length === 0) {
+        fallback.push('');
+      } else if (memberSummaries.length === 1) {
+        fallback.push(memberSummaries[0]!);
+      } else {
+        // Reduce to single summary via pairs
+        let current = memberSummaries;
+        while (current.length > 1) {
+          const pair: [string, string] = [current[0]!, current[1]!];
+          const merged = await summarizePair(llmClient, pair);
+          current = [merged, ...current.slice(2)];
+        }
+        fallback.push(current[0]!);
+      }
+    }
+    return fallback;
+  }
+
+  return results;
+}
+
+/**
+ * Generate names for multiple communities in a single LLM call.
+ * Returns one short name per summary, in order.
+ */
+export async function batchGenerateNames(
+  llmClient: LLMClient,
+  summaries: string[]
+): Promise<string[]> {
+  if (summaries.length === 0) return [];
+  if (summaries.length === 1) {
+    return [await generateSummaryDescription(llmClient, summaries[0]!)];
+  }
+
+  const messages = batchNamePrompt(summaries);
+  const response = await llmClient.generateText(messages);
+  const results = parseJsonArray(response, 'name');
+
+  if (results.length !== summaries.length) {
+    // Fallback: name each individually
+    const fallback: string[] = [];
+    for (const summary of summaries) {
+      fallback.push(await generateSummaryDescription(llmClient, summary));
+    }
+    return fallback;
+  }
+
+  return results;
 }
 
 // ---------------------------------------------------------------------------
@@ -238,9 +464,11 @@ export async function buildCommunity(
       pairs.push([summaries[i]!, summaries[half + i]!]);
     }
 
-    const newSummaries = await Promise.all(
-      pairs.map((pair) => summarizePair(llmClient, pair))
-    );
+    // Serialize pair summarization to avoid overwhelming LLM backends
+    const newSummaries: string[] = [];
+    for (const pair of pairs) {
+      newSummaries.push(await summarizePair(llmClient, pair));
+    }
 
     if (oddOneOut !== undefined) {
       newSummaries.push(oddOneOut);
@@ -275,31 +503,88 @@ export async function buildCommunity(
 // Build All Communities
 // ---------------------------------------------------------------------------
 
+/**
+ * Build communities using the best available algorithm:
+ *   1. Neo4j GDS Leiden (if GDS plugin installed) — milliseconds, better quality
+ *   2. Application-level label propagation (fallback) — slower, requires N+1 queries
+ *
+ * Summarization uses batched LLM calls — all communities summarized in a few calls
+ * instead of N-1 per community.
+ */
 export async function buildCommunities(
   driver: GraphDriver,
   llmClient: LLMClient,
   entityNodes: EntityNodeNamespaceReader,
   groupIds: string[] | null
 ): Promise<[CommunityNode[], CommunityEdge[]]> {
-  const communityClusters = await getCommunityClusters(driver, entityNodes, groupIds);
+  // Phase 1: Detect communities
+  let communityClusters: EntityNode[][];
+  const gdsAvailable = await hasGDS(driver);
 
-  // Concurrency-limited building: process in batches of MAX_COMMUNITY_BUILD_CONCURRENCY
-  const results: [CommunityNode, CommunityEdge[]][] = [];
-
-  for (let i = 0; i < communityClusters.length; i += MAX_COMMUNITY_BUILD_CONCURRENCY) {
-    const batch = communityClusters.slice(i, i + MAX_COMMUNITY_BUILD_CONCURRENCY);
-    const batchResults = await Promise.all(
-      batch.map((cluster) => buildCommunity(llmClient, cluster))
-    );
-    results.push(...batchResults);
+  if (gdsAvailable) {
+    console.log('[communities] Using Neo4j GDS Leiden algorithm');
+    communityClusters = await getCommunityClustersGDS(driver, entityNodes, groupIds);
+  } else {
+    console.log('[communities] GDS not available, falling back to label propagation');
+    communityClusters = await getCommunityClusters(driver, entityNodes, groupIds);
   }
 
+  // Filter out empty clusters
+  communityClusters = communityClusters.filter((c) => c.length > 0);
+
+  if (communityClusters.length === 0) {
+    return [[], []];
+  }
+
+  console.log(`[communities] ${communityClusters.length} clusters detected, summarizing...`);
+
+  // Phase 2: Batched summarization
+  // Prepare member summaries for each community (capped at MAX_MEMBERS_PER_SUMMARY)
+  const allMemberSummaries: string[][] = communityClusters.map((cluster) =>
+    cluster.slice(0, MAX_MEMBERS_PER_SUMMARY).map((e) => e.summary)
+  );
+
+  // Process in batches of MAX_BATCH_SIZE
+  const allSummaries: string[] = [];
+  for (let i = 0; i < allMemberSummaries.length; i += MAX_BATCH_SIZE) {
+    const batch = allMemberSummaries.slice(i, i + MAX_BATCH_SIZE);
+    const batchSummaries = await batchSummarize(llmClient, batch);
+    allSummaries.push(...batchSummaries);
+  }
+
+  // Phase 3: Batched name generation
+  const allNames: string[] = [];
+  for (let i = 0; i < allSummaries.length; i += MAX_BATCH_SIZE) {
+    const batch = allSummaries.slice(i, i + MAX_BATCH_SIZE);
+    const batchNames = await batchGenerateNames(llmClient, batch);
+    allNames.push(...batchNames);
+  }
+
+  // Phase 4: Assemble community nodes and edges
+  const now = utcNow();
   const communityNodes: CommunityNode[] = [];
   const communityEdges: CommunityEdge[] = [];
-  for (const [node, edges] of results) {
-    communityNodes.push(node);
-    communityEdges.push(...edges);
+
+  for (let i = 0; i < communityClusters.length; i++) {
+    const cluster = communityClusters[i]!;
+    const firstEntity = cluster[0]!;
+
+    const communityNode: CommunityNode = {
+      uuid: randomUUID(),
+      name: allNames[i] ?? `Community ${i + 1}`,
+      group_id: firstEntity.group_id,
+      labels: ['Community'],
+      created_at: now,
+      summary: allSummaries[i] ?? '',
+    };
+
+    communityNodes.push(communityNode);
+    communityEdges.push(...buildCommunityEdges(cluster, communityNode, now));
   }
+
+  const summaryLLMCalls = Math.ceil(allMemberSummaries.length / MAX_BATCH_SIZE);
+  const nameLLMCalls = Math.ceil(allSummaries.length / MAX_BATCH_SIZE);
+  console.log(`[communities] Built ${communityNodes.length} communities (${summaryLLMCalls + nameLLMCalls} LLM calls)`);
 
   return [communityNodes, communityEdges];
 }
