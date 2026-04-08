@@ -5,7 +5,8 @@ import type { EntityAttributes } from './common';
 export const EpisodeTypes = {
   message: 'message',
   json: 'json',
-  text: 'text'
+  text: 'text',
+  document: 'document'
 } as const;
 
 export type EpisodeType = (typeof EpisodeTypes)[keyof typeof EpisodeTypes];

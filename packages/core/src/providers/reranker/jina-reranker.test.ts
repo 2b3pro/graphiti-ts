@@ -78,7 +78,7 @@ describe('JinaRerankerClient', () => {
     const reranker = new JinaRerankerClient({ model: 'jina-reranker-v3', topN: 5 });
     await reranker.rank('test query', ['passage one']);
 
-    const fetchMock = globalThis.fetch as ReturnType<typeof mock>;
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof mock>;
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
     const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit];
@@ -103,7 +103,7 @@ describe('JinaRerankerClient', () => {
     const reranker = new JinaRerankerClient();
     await reranker.rank('query', ['passage']);
 
-    const fetchMock = globalThis.fetch as ReturnType<typeof mock>;
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof mock>;
     const [, options] = fetchMock.mock.calls[0] as [string, RequestInit];
     const body = JSON.parse(options.body as string);
     expect(body.top_n).toBeUndefined();
@@ -136,7 +136,7 @@ describe('JinaRerankerClient', () => {
     const reranker = new JinaRerankerClient();
     await reranker.rank('q', ['p']);
 
-    const fetchMock = globalThis.fetch as ReturnType<typeof mock>;
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof mock>;
     const [, options] = fetchMock.mock.calls[0] as [string, RequestInit];
     const body = JSON.parse(options.body as string);
     expect(body.model).toBe('jina-reranker-v3');

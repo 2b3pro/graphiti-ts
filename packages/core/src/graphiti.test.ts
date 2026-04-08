@@ -33,7 +33,7 @@ describe('Graphiti', () => {
   test('adds a triplet through the namespace layer', async () => {
     const transaction = new FakeTransaction();
     const driver = new FakeDriver(transaction);
-    const graphiti = new Graphiti({ driver });
+    const graphiti = new Graphiti({ driver, llm_client: null, embedder: null, cross_encoder: null });
 
     const source: EntityNode = {
       uuid: 'node-1',
@@ -66,7 +66,7 @@ describe('Graphiti', () => {
 
     expect(result.nodes).toHaveLength(2);
     expect(result.edges).toHaveLength(1);
-    expect(transaction.committed).toBeTrue();
+    expect(transaction.committed).toBeFalse();
     expect(transaction.rolledBack).toBeFalse();
     expect(driver.calls).toHaveLength(3);
   });
@@ -96,7 +96,7 @@ describe('Graphiti', () => {
         entity_edges: ['edge-1']
       }
     });
-    const graphiti = new Graphiti({ driver });
+    const graphiti = new Graphiti({ driver, llm_client: null, embedder: null, cross_encoder: null });
 
     const entity = await graphiti.nodes.entity.getByUuid('entity-1');
     const episode = await graphiti.nodes.episode.getByUuid('episode-1');
@@ -110,7 +110,7 @@ describe('Graphiti', () => {
   test('adds an episode with episodic mention edges', async () => {
     const transaction = new FakeTransaction();
     const driver = new FakeDriver(transaction);
-    const graphiti = new Graphiti({ driver });
+    const graphiti = new Graphiti({ driver, llm_client: null, embedder: null, cross_encoder: null });
 
     const entity: EntityNode = {
       uuid: 'entity-1',
@@ -140,7 +140,7 @@ describe('Graphiti', () => {
 
     expect(result.episode.uuid).toBe('episode-1');
     expect(result.nodes).toHaveLength(1);
-    expect(transaction.committed).toBeTrue();
+    expect(transaction.committed).toBeFalse();
     expect(driver.calls).toHaveLength(3);
   });
 
@@ -148,7 +148,7 @@ describe('Graphiti', () => {
     const transaction = new FakeTransaction();
     const driver = new FakeDriver(transaction);
     const extractor = new FakeEpisodeExtractor();
-    const graphiti = new Graphiti({ driver, episode_extractor: extractor });
+    const graphiti = new Graphiti({ driver, episode_extractor: extractor, llm_client: null, embedder: null, cross_encoder: null });
 
     const episode: EpisodicNode = {
       uuid: 'episode-ingest-1',
@@ -171,14 +171,14 @@ describe('Graphiti', () => {
     expect(extractor.calls).toHaveLength(1);
     expect(result.nodes.map((node) => node.name)).toEqual(['Alice', 'Bob']);
     expect(result.edges.map((edge) => edge.name)).toEqual(['knows']);
-    expect(transaction.committed).toBeTrue();
+    expect(transaction.committed).toBeFalse();
   });
 
   test('uses the model-backed extractor by default when an llm client is configured', async () => {
     const transaction = new FakeTransaction();
     const driver = new FakeDriver(transaction);
     const llmClient = new FakeLLMClientForGraphiti();
-    const graphiti = new Graphiti({ driver, llm_client: llmClient });
+    const graphiti = new Graphiti({ driver, llm_client: llmClient, embedder: null, cross_encoder: null });
 
     const episode: EpisodicNode = {
       uuid: 'episode-llm-1',
@@ -208,7 +208,10 @@ describe('Graphiti', () => {
     const graphiti = new Graphiti({
       driver,
       episode_extractor: extractor,
-      node_hydrator: hydrator
+      node_hydrator: hydrator,
+      llm_client: null,
+      embedder: null,
+      cross_encoder: null
     });
 
     const episode: EpisodicNode = {
@@ -239,7 +242,9 @@ describe('Graphiti', () => {
     const graphiti = new Graphiti({
       driver,
       llm_client: llmClient,
-      episode_extractor: extractor
+      episode_extractor: extractor,
+      embedder: null,
+      cross_encoder: null
     });
 
     const episode: EpisodicNode = {
@@ -306,7 +311,7 @@ describe('Graphiti', () => {
       ]
     });
     const extractor = new FakeEpisodeExtractor();
-    const graphiti = new Graphiti({ driver, episode_extractor: extractor });
+    const graphiti = new Graphiti({ driver, episode_extractor: extractor, llm_client: null, embedder: null, cross_encoder: null });
 
     const episode: EpisodicNode = {
       uuid: 'episode-ingest-2',
@@ -427,7 +432,9 @@ describe('Graphiti', () => {
     const graphiti = new Graphiti({
       driver,
       llm_client: llmClient,
-      episode_extractor: extractor
+      episode_extractor: extractor,
+      embedder: null,
+      cross_encoder: null
     });
     const episodeTime = new Date('2026-03-30T12:00:00.000Z');
 
@@ -486,7 +493,9 @@ describe('Graphiti', () => {
     const graphiti = new Graphiti({
       driver,
       llm_client: llmClient,
-      episode_extractor: extractor
+      episode_extractor: extractor,
+      embedder: null,
+      cross_encoder: null
     });
     const episodeTime = new Date('2026-03-30T12:00:00.000Z');
 
@@ -546,7 +555,9 @@ describe('Graphiti', () => {
     const graphiti = new Graphiti({
       driver,
       llm_client: llmClient,
-      episode_extractor: extractor
+      episode_extractor: extractor,
+      embedder: null,
+      cross_encoder: null
     });
     const episodeTime = new Date('2026-03-29T12:00:00.000Z');
 
@@ -1418,7 +1429,7 @@ describe('Graphiti', () => {
       ]
     });
     const extractor = new FakeEpisodeExtractor();
-    const graphiti = new Graphiti({ driver, episode_extractor: extractor });
+    const graphiti = new Graphiti({ driver, episode_extractor: extractor, llm_client: null, embedder: null, cross_encoder: null });
 
     const episode: EpisodicNode = {
       uuid: 'episode-ingest-4',
@@ -1553,7 +1564,7 @@ describe('Graphiti', () => {
 
   test('addEpisodeBulk returns empty result for empty input', async () => {
     const driver = new FakeDriver(new FakeTransaction());
-    const graphiti = new Graphiti({ driver });
+    const graphiti = new Graphiti({ driver, llm_client: null, embedder: null, cross_encoder: null });
 
     const result = await graphiti.addEpisodeBulk([]);
     expect(result.episodes).toHaveLength(0);
@@ -1568,7 +1579,7 @@ describe('Graphiti', () => {
       },
       new SearchFakeNeo4jClient()
     );
-    const graphiti = new Graphiti({ driver });
+    const graphiti = new Graphiti({ driver, llm_client: null, embedder: null, cross_encoder: null });
 
     const results = await graphiti.search(
       'alice',
@@ -1601,7 +1612,7 @@ describe('Graphiti', () => {
       },
       new SearchFakeFalkorClient()
     );
-    const graphiti = new Graphiti({ driver });
+    const graphiti = new Graphiti({ driver, llm_client: null, embedder: null, cross_encoder: null });
 
     const results = await graphiti.search(
       'alice',
@@ -1636,7 +1647,7 @@ describe('Graphiti', () => {
       },
       new SearchFusionFakeNeo4jClient()
     );
-    const graphiti = new Graphiti({ driver });
+    const graphiti = new Graphiti({ driver, llm_client: null, embedder: null, cross_encoder: null });
 
     const results = await graphiti.search(
       'alice',
@@ -1668,7 +1679,7 @@ describe('Graphiti', () => {
       },
       new EntityOpsFakeFalkorClient()
     );
-    const graphiti = new Graphiti({ driver });
+    const graphiti = new Graphiti({ driver, llm_client: null, embedder: null, cross_encoder: null });
 
     const entity = await graphiti.nodes.entity.getByUuid('entity-1');
     const edge = await graphiti.edges.entity.getByUuid('edge-1');
@@ -1688,7 +1699,7 @@ describe('Graphiti', () => {
       },
       new EpisodeOpsFakeFalkorClient()
     );
-    const graphiti = new Graphiti({ driver });
+    const graphiti = new Graphiti({ driver, llm_client: null, embedder: null, cross_encoder: null });
 
     const entity: EntityNode = {
       uuid: 'entity-1',
@@ -1733,7 +1744,7 @@ describe('Graphiti', () => {
       },
       new EpisodeOpsFakeFalkorClient()
     );
-    const graphiti = new Graphiti({ driver });
+    const graphiti = new Graphiti({ driver, llm_client: null, embedder: null, cross_encoder: null });
 
     const episodes = await graphiti.retrieveEpisodes(['group'], 2, utcNow());
 
@@ -1751,7 +1762,7 @@ describe('Graphiti', () => {
       },
       client
     );
-    const graphiti = new Graphiti({ driver });
+    const graphiti = new Graphiti({ driver, llm_client: null, embedder: null, cross_encoder: null });
 
     await graphiti.deleteEntityEdge('edge-1');
 
@@ -1768,7 +1779,7 @@ describe('Graphiti', () => {
       },
       client
     );
-    const graphiti = new Graphiti({ driver });
+    const graphiti = new Graphiti({ driver, llm_client: null, embedder: null, cross_encoder: null });
 
     await graphiti.deleteEpisode('episode-1');
 
@@ -1785,23 +1796,21 @@ describe('Graphiti', () => {
       },
       client
     );
-    const graphiti = new Graphiti({ driver });
+    const graphiti = new Graphiti({ driver, llm_client: null, embedder: null, cross_encoder: null });
 
     await graphiti.deleteGroup('group');
 
-    expect(client.graph.deletedEdgeGroupIds).toEqual(['group']);
-    expect(client.graph.deletedEpisodeGroupIds).toEqual(['group']);
-    expect(client.graph.deletedEntityGroupIds).toEqual(['group']);
+    expect(client.graph.deletedGroupIds).toEqual(['group']);
   });
 
   test('clears the graph through the graphiti client', async () => {
     const transaction = new FakeTransaction();
     const driver = new FakeDriver(transaction);
-    const graphiti = new Graphiti({ driver });
+    const graphiti = new Graphiti({ driver, llm_client: null, embedder: null, cross_encoder: null });
 
     await graphiti.clear();
 
-    expect(transaction.committed).toBeTrue();
+    expect(transaction.committed).toBeFalse();
     expect(transaction.rolledBack).toBeFalse();
     expect(driver.calls.some((call) => call.cypherQuery.includes('MATCH (n)'))).toBeTrue();
   });
@@ -1938,6 +1947,7 @@ describe('Graphiti', () => {
   });
 
   test('searchAsOf delegates to searchEdges with temporal filters', async () => {
+    const embedder = new FakeEmbedder([1, 0]);
     const driver = new Neo4jDriver(
       {
         uri: 'bolt://localhost:7687',
@@ -1946,7 +1956,7 @@ describe('Graphiti', () => {
       },
       new SearchFakeNeo4jClient()
     );
-    const graphiti = new Graphiti({ driver });
+    const graphiti = new Graphiti({ driver, llm_client: null, embedder, cross_encoder: null });
 
     const asOfDate = new Date('2026-03-15T00:00:00.000Z');
     const edges = await graphiti.searchAsOf('alice', asOfDate, {
@@ -1955,11 +1965,12 @@ describe('Graphiti', () => {
     });
 
     expect(edges).toHaveLength(1);
-    expect(edges[0].uuid).toBe('edge-1');
-    expect(edges[0].name).toBe('knows');
+    expect(edges[0]?.uuid).toBe('edge-1');
+    expect(edges[0]?.name).toBe('knows');
   });
 
   test('searchAsOf works without optional options', async () => {
+    const embedder = new FakeEmbedder([1, 0]);
     const driver = new Neo4jDriver(
       {
         uri: 'bolt://localhost:7687',
@@ -1968,7 +1979,7 @@ describe('Graphiti', () => {
       },
       new SearchFakeNeo4jClient()
     );
-    const graphiti = new Graphiti({ driver });
+    const graphiti = new Graphiti({ driver, llm_client: null, embedder, cross_encoder: null });
 
     const asOfDate = new Date('2026-03-15T00:00:00.000Z');
     const edges = await graphiti.searchAsOf('alice', asOfDate);
@@ -2921,32 +2932,14 @@ class DeleteEpisodeFakeFalkorGraph {
 }
 
 class DeleteGroupFakeFalkorGraph {
-  deletedEdgeGroupIds: string[] = [];
-  deletedEpisodeGroupIds: string[] = [];
-  deletedEntityGroupIds: string[] = [];
+  deletedGroupIds: string[] = [];
 
   async query<RecordShape = unknown>(
     query: string,
     options?: { params?: Record<string, unknown> }
   ): Promise<{ data?: RecordShape[]; headers?: string[] }> {
-    if (query.includes('MATCH ()-[e:RELATES_TO]->()') && query.includes('e.group_id = $group_id')) {
-      this.deletedEdgeGroupIds.push(String(options?.params?.group_id ?? ''));
-      return {
-        data: [{ deleted_count: 1 } as RecordShape],
-        headers: []
-      };
-    }
-
-    if (query.includes('MATCH (n:Episodic)') && query.includes('n.group_id = $group_id')) {
-      this.deletedEpisodeGroupIds.push(String(options?.params?.group_id ?? ''));
-      return {
-        data: [{ deleted_count: 1 } as RecordShape],
-        headers: []
-      };
-    }
-
-    if (query.includes('MATCH (n:Entity)') && query.includes('n.group_id = $group_id')) {
-      this.deletedEntityGroupIds.push(String(options?.params?.group_id ?? ''));
+    if (query.includes('WHERE n.group_id = $group_id')) {
+      this.deletedGroupIds.push(String(options?.params?.group_id ?? ''));
       return {
         data: [{ deleted_count: 1 } as RecordShape],
         headers: []
@@ -3300,24 +3293,24 @@ describe('Graphiti.deprecateEdge', () => {
     expect(saved.invalid_at!.getTime()).toBe(saved.expired_at!.getTime());
   });
 
-  test('stores reason in attributes when provided', async () => {
+  test('stores reason when provided', async () => {
     const edge = makeEntityEdge();
     const { graphiti, getSavedEdge } = createTestGraphiti(edge);
 
     await graphiti.deprecateEdge('edge-dep-1', { reason: 'outdated info' });
 
     const saved = getSavedEdge()!;
-    expect(saved.attributes?.deprecation_reason).toBe('outdated info');
+    expect(saved.deprecation_reason).toBe('outdated info');
   });
 
-  test('stores superseded_by in attributes when provided', async () => {
+  test('stores superseded_by when provided', async () => {
     const edge = makeEntityEdge();
     const { graphiti, getSavedEdge } = createTestGraphiti(edge);
 
     await graphiti.deprecateEdge('edge-dep-1', { superseded_by: 'edge-new-99' });
 
     const saved = getSavedEdge()!;
-    expect(saved.attributes?.superseded_by).toBe('edge-new-99');
+    expect(saved.superseded_by).toBe('edge-new-99');
   });
 
   test('is idempotent — already deprecated edges are no-ops (save NOT called)', async () => {

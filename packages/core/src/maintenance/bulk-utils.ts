@@ -8,7 +8,10 @@
  * - extractNodesAndEdgesBulk(): Parallel extraction across episodes
  */
 
+import { GraphProviders } from '@graphiti/shared';
+
 import type { GraphitiClients, EmbedderClient, GraphDriver } from '../contracts';
+import type { DeprecationGateConfig } from '../domain/deprecation-gate';
 import type { EntityEdge, EpisodicEdge } from '../domain/edges';
 import type { EntityNode, EpisodicNode } from '../domain/nodes';
 import { semaphoreGather } from '../utils/concurrency';
@@ -17,6 +20,7 @@ import { buildDirectedUuidMap } from '../dedup/union-find';
 import { extractNodes, resolveExtractedNodes, type EntityTypeDefinition } from './node-operations';
 import { extractEdges, resolveEdgePointers as resolveEdgePointersOp, resolveExtractedEdge, type EdgeTypeDefinition } from './edge-operations';
 import type { SearchFilters } from '../search/filters';
+import { serializeForCypher, serializeForFalkor } from '../utils/serialization';
 
 export interface RawEpisode {
   name: string;
@@ -25,6 +29,66 @@ export interface RawEpisode {
   source_description: string;
   source: import('../domain/nodes').EpisodeType;
   reference_time: Date;
+}
+
+export interface BulkEmbeddingOptions {
+  prefer_batch_embeddings?: boolean;
+}
+
+async function generateNodeEmbeddings(
+  entityNodes: EntityNode[],
+  embedder: EmbedderClient,
+  options: BulkEmbeddingOptions
+): Promise<void> {
+  const pendingNodes = entityNodes.filter((n) => !n.name_embedding);
+  if (pendingNodes.length === 0) {
+    return;
+  }
+
+  const prefersBatch = options.prefer_batch_embeddings !== false;
+  if (prefersBatch && embedder.createBatch) {
+    const embeddings = await embedder.createBatch(
+      pendingNodes.map((node) => node.name.replaceAll('\n', ' '))
+    );
+    for (let i = 0; i < pendingNodes.length; i++) {
+      pendingNodes[i]!.name_embedding = embeddings[i] ?? null;
+    }
+    return;
+  }
+
+  await semaphoreGather(
+    pendingNodes.map((node) => async () => {
+      node.name_embedding = await embedder.create([node.name.replaceAll('\n', ' ')]);
+    })
+  );
+}
+
+async function generateEdgeEmbeddings(
+  entityEdges: EntityEdge[],
+  embedder: EmbedderClient,
+  options: BulkEmbeddingOptions
+): Promise<void> {
+  const pendingEdges = entityEdges.filter((e) => !e.fact_embedding);
+  if (pendingEdges.length === 0) {
+    return;
+  }
+
+  const prefersBatch = options.prefer_batch_embeddings !== false;
+  if (prefersBatch && embedder.createBatch) {
+    const embeddings = await embedder.createBatch(
+      pendingEdges.map((edge) => edge.fact.replaceAll('\n', ' '))
+    );
+    for (let i = 0; i < pendingEdges.length; i++) {
+      pendingEdges[i]!.fact_embedding = embeddings[i] ?? null;
+    }
+    return;
+  }
+
+  await semaphoreGather(
+    pendingEdges.map((edge) => async () => {
+      edge.fact_embedding = await embedder.create([edge.fact.replaceAll('\n', ' ')]);
+    })
+  );
 }
 
 // -------------------------------------------------------------------------
@@ -37,51 +101,31 @@ export async function addNodesAndEdgesBulk(
   episodicEdges: EpisodicEdge[],
   entityNodes: EntityNode[],
   entityEdges: EntityEdge[],
-  embedder: EmbedderClient
+  embedder: EmbedderClient,
+  options: BulkEmbeddingOptions = {}
 ): Promise<void> {
-  // Generate missing embeddings
-  await semaphoreGather(
-    entityNodes
-      .filter((n) => !n.name_embedding)
-      .map((node) => async () => {
-        node.name_embedding = await embedder.create([node.name.replaceAll('\n', ' ')]);
-      })
-  );
+  const serialize =
+    driver.provider === GraphProviders.FALKORDB ? serializeForFalkor : serializeForCypher;
 
-  await semaphoreGather(
-    entityEdges
-      .filter((e) => !e.fact_embedding)
-      .map((edge) => async () => {
-        edge.fact_embedding = await embedder.create([edge.fact.replaceAll('\n', ' ')]);
-      })
-  );
+  await generateNodeEmbeddings(entityNodes, embedder, options);
+  await generateEdgeEmbeddings(entityEdges, embedder, options);
 
   // Save episodes
   for (const episode of episodicNodes) {
     await driver.executeQuery(
       `
-      MERGE (e:Episodic {uuid: $uuid})
-      SET e.name = $name,
-          e.group_id = $group_id,
-          e.source = $source,
-          e.content = $content,
-          e.source_description = $source_description,
-          e.created_at = $created_at,
-          e.valid_at = $valid_at,
-          e.entity_edges = $entity_edges
+      MERGE (e:Episodic {uuid: $episode.uuid})
+      SET e += $episode
+      SET e.labels = $labels
       RETURN e.uuid AS uuid
       `,
       {
         params: {
-          uuid: episode.uuid,
-          name: episode.name,
-          group_id: episode.group_id,
-          source: episode.source,
-          content: episode.content,
-          source_description: episode.source_description,
-          created_at: episode.created_at.toISOString(),
-          valid_at: episode.valid_at?.toISOString() ?? null,
-          entity_edges: episode.entity_edges ?? []
+          episode: serialize({
+            ...episode,
+            labels: undefined
+          }),
+          labels: episode.labels
         }
       }
     );
@@ -89,27 +133,20 @@ export async function addNodesAndEdgesBulk(
 
   // Save entity nodes
   for (const node of entityNodes) {
-    const labels = [...new Set([...node.labels, 'Entity'])];
     await driver.executeQuery(
       `
-      MERGE (n:Entity {uuid: $uuid})
-      SET n.name = $name,
-          n.group_id = $group_id,
-          n.summary = $summary,
-          n.created_at = $created_at,
-          n.name_embedding = $name_embedding,
-          n.labels = $labels
+      MERGE (n:Entity {uuid: $entity.uuid})
+      SET n += $entity
+      SET n.labels = $labels
       RETURN n.uuid AS uuid
       `,
       {
         params: {
-          uuid: node.uuid,
-          name: node.name,
-          group_id: node.group_id,
-          summary: node.summary,
-          created_at: node.created_at.toISOString(),
-          name_embedding: node.name_embedding ?? null,
-          labels
+          entity: serialize({
+            ...node,
+            labels: undefined
+          }),
+          labels: node.labels
         }
       }
     );
@@ -121,18 +158,15 @@ export async function addNodesAndEdgesBulk(
       `
       MATCH (source:Episodic {uuid: $source_uuid})
       MATCH (target:Entity {uuid: $target_uuid})
-      MERGE (source)-[e:MENTIONS {uuid: $uuid}]->(target)
-      SET e.group_id = $group_id,
-          e.created_at = $created_at
+      MERGE (source)-[e:MENTIONS {uuid: $edge.uuid}]->(target)
+      SET e += $edge
       RETURN e.uuid AS uuid
       `,
       {
         params: {
-          uuid: edge.uuid,
           source_uuid: edge.source_node_uuid,
           target_uuid: edge.target_node_uuid,
-          group_id: edge.group_id,
-          created_at: edge.created_at.toISOString()
+          edge: serialize(edge)
         }
       }
     );
@@ -144,32 +178,15 @@ export async function addNodesAndEdgesBulk(
       `
       MATCH (source:Entity {uuid: $source_uuid})
       MATCH (target:Entity {uuid: $target_uuid})
-      MERGE (source)-[e:RELATES_TO {uuid: $uuid}]->(target)
-      SET e.name = $name,
-          e.fact = $fact,
-          e.group_id = $group_id,
-          e.episodes = $episodes,
-          e.created_at = $created_at,
-          e.expired_at = $expired_at,
-          e.valid_at = $valid_at,
-          e.invalid_at = $invalid_at,
-          e.fact_embedding = $fact_embedding
+      MERGE (source)-[e:RELATES_TO {uuid: $edge.uuid}]->(target)
+      SET e += $edge
       RETURN e.uuid AS uuid
       `,
       {
         params: {
-          uuid: edge.uuid,
           source_uuid: edge.source_node_uuid,
           target_uuid: edge.target_node_uuid,
-          name: edge.name,
-          fact: edge.fact,
-          group_id: edge.group_id,
-          episodes: edge.episodes ?? [],
-          created_at: edge.created_at.toISOString(),
-          expired_at: edge.expired_at?.toISOString() ?? null,
-          valid_at: edge.valid_at?.toISOString() ?? null,
-          invalid_at: edge.invalid_at?.toISOString() ?? null,
-          fact_embedding: edge.fact_embedding ?? null
+          edge: serialize(edge)
         }
       }
     );
@@ -187,7 +204,8 @@ export async function extractNodesAndEdgesBulk(
   entityTypes?: Record<string, EntityTypeDefinition> | null,
   excludedEntityTypes?: string[] | null,
   edgeTypes?: Record<string, EdgeTypeDefinition> | null,
-  customExtractionInstructions?: string | null
+  customExtractionInstructions?: string | null,
+  resolveCustomExtractionInstructions?: ((episode: EpisodicNode) => string | null) | null
 ): Promise<[EntityNode[][], EntityEdge[][]]> {
   // Extract nodes for each episode
   const extractedNodesBulk: EntityNode[][] = await semaphoreGather(
@@ -200,7 +218,9 @@ export async function extractNodesAndEdgesBulk(
             previousEpisodes,
             entityTypes,
             excludedEntityTypes,
-            customExtractionInstructions
+            customExtractionInstructions ??
+              resolveCustomExtractionInstructions?.(episode) ??
+              null
           )
     )
   );
@@ -218,7 +238,9 @@ export async function extractNodesAndEdgesBulk(
             edgeTypeMap,
             episode.group_id,
             edgeTypes,
-            customExtractionInstructions
+            customExtractionInstructions ??
+              resolveCustomExtractionInstructions?.(episode) ??
+              null
           )
     )
   );
@@ -349,20 +371,36 @@ export async function dedupeEdgesBulk(
   clients: GraphitiClients,
   extractedEdges: EntityEdge[][],
   episodeTuples: Array<[EpisodicNode, EpisodicNode[]]>,
-  edgeTypes: Record<string, EdgeTypeDefinition>
+  edgeTypes: Record<string, EdgeTypeDefinition>,
+  options: {
+    deprecation_gate_config?: DeprecationGateConfig;
+    prefer_batch_embeddings?: boolean;
+  } = {}
 ): Promise<Record<string, EntityEdge[]>> {
   const embedder = clients.embedder;
   const minScore = 0.6;
 
   // Generate embeddings
   for (const edges of extractedEdges) {
-    await semaphoreGather(
-      edges
-        .filter((e) => !e.fact_embedding)
-        .map((edge) => async () => {
+    const pendingEdges = edges.filter((e) => !e.fact_embedding);
+    if (
+      options.prefer_batch_embeddings !== false &&
+      embedder.createBatch &&
+      pendingEdges.length > 0
+    ) {
+      const embeddings = await embedder.createBatch(
+        pendingEdges.map((edge) => edge.fact.replaceAll('\n', ' '))
+      );
+      for (let i = 0; i < pendingEdges.length; i++) {
+        pendingEdges[i]!.fact_embedding = embeddings[i] ?? null;
+      }
+    } else {
+      await semaphoreGather(
+        pendingEdges.map((edge) => async () => {
           edge.fact_embedding = await embedder.create([edge.fact.replaceAll('\n', ' ')]);
         })
-    );
+      );
+    }
   }
 
   // Find similar candidates and resolve
@@ -425,7 +463,9 @@ export async function dedupeEdgesBulk(
             candidates,
             candidates,
             episode,
-            edgeTypes
+            edgeTypes,
+            undefined,
+            options.deprecation_gate_config
           )
     )
   );

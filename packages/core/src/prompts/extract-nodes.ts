@@ -99,7 +99,7 @@ GUIDELINES:
 - Avoid extracting relationships, actions, or temporal information as entities
 - Be explicit with full names (e.g., "John Smith" not "John")
 - Classify each entity with the most appropriate entity_type_id from ENTITY TYPES
-
+${context.custom_extraction_instructions ? `\nADDITIONAL INSTRUCTIONS:\n${context.custom_extraction_instructions}` : ''}
 Respond with JSON: {"extracted_entities": [{"name": "...", "entity_type_id": ...}, ...]}`
     }
   ];

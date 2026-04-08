@@ -55,6 +55,23 @@ describe('extractNodes prompts', () => {
     assertValidMessages(msgs);
   });
 
+  test('extractText includes custom_extraction_instructions in prompt', () => {
+    const contextWithInstructions = {
+      ...baseContext,
+      custom_extraction_instructions: 'Focus on theoretical concepts. Suppress bibliography entries.',
+    };
+    const msgs = promptLibrary.extractNodes.extractText(contextWithInstructions);
+    const allContent = msgs.map((m) => m.content).join(' ');
+    expect(allContent).toContain('ADDITIONAL INSTRUCTIONS');
+    expect(allContent).toContain('Focus on theoretical concepts');
+  });
+
+  test('extractText omits ADDITIONAL INSTRUCTIONS when custom_extraction_instructions is empty', () => {
+    const msgs = promptLibrary.extractNodes.extractText(baseContext);
+    const allContent = msgs.map((m) => m.content).join(' ');
+    expect(allContent).not.toContain('ADDITIONAL INSTRUCTIONS');
+  });
+
   test('extractMessage injects entity_types into content', () => {
     const msgs = promptLibrary.extractNodes.extractMessage(baseContext);
     const allContent = msgs.map((m) => m.content).join(' ');
@@ -126,6 +143,19 @@ describe('extractEdges prompts', () => {
     });
     const allContent = msgs.map((m) => m.content).join(' ');
     expect(allContent).toContain('WORKS_AT');
+  });
+
+  test('extractEdges includes custom_extraction_instructions when provided', () => {
+    const msgs = promptLibrary.extractEdges.extractEdges({
+      current_message: 'Alice works at Acme.',
+      previous_messages: '',
+      entities: '[]',
+      reference_time: '2024-01-15T10:00:00Z',
+      custom_extraction_instructions: 'Prefer formal employment relationships only.'
+    });
+    const allContent = msgs.map((m) => m.content).join(' ');
+    expect(allContent).toContain('ADDITIONAL INSTRUCTIONS');
+    expect(allContent).toContain('Prefer formal employment relationships only.');
   });
 
   test('extractEdgeAttributes returns valid messages', () => {

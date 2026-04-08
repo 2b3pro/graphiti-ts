@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { utcNow } from '@graphiti/shared';
 
 import type { EmbedderClient, GraphDriver, LLMClient } from '../contracts';
+import type { GraphitiCommunityConfig } from '../config';
 import type { CommunityEdge } from '../domain/edges';
 import type { CommunityNode, EntityNode } from '../domain/nodes';
 import type { RecordLike } from '../utils/records';
@@ -28,6 +29,12 @@ const MAX_MEMBERS_PER_SUMMARY = 30;
  * Controls prompt size — each community adds ~100-200 tokens.
  */
 const MAX_BATCH_SIZE = 40;
+
+export interface CommunityBuildConfig {
+  detection_strategy?: GraphitiCommunityConfig['detection_strategy'];
+  max_members_per_summary?: number;
+  batch_size?: number;
+}
 
 export interface Neighbor {
   node_uuid: string;
@@ -515,17 +522,27 @@ export async function buildCommunities(
   driver: GraphDriver,
   llmClient: LLMClient,
   entityNodes: EntityNodeNamespaceReader,
-  groupIds: string[] | null
+  groupIds: string[] | null,
+  config: CommunityBuildConfig = {}
 ): Promise<[CommunityNode[], CommunityEdge[]]> {
   // Phase 1: Detect communities
   let communityClusters: EntityNode[][];
-  const gdsAvailable = await hasGDS(driver);
+  const strategy = config.detection_strategy ?? 'auto';
+  const gdsAvailable = strategy === 'label_propagation' ? false : await hasGDS(driver);
 
-  if (gdsAvailable) {
+  if (strategy === 'gds' && !gdsAvailable) {
+    throw new Error('Community detection strategy "gds" requested but GDS is not available');
+  }
+
+  if (strategy === 'gds' || (strategy === 'auto' && gdsAvailable)) {
     console.log('[communities] Using Neo4j GDS Leiden algorithm');
     communityClusters = await getCommunityClustersGDS(driver, entityNodes, groupIds);
   } else {
+    if (strategy === 'label_propagation') {
+      console.log('[communities] Using label propagation community detection');
+    } else {
     console.log('[communities] GDS not available, falling back to label propagation');
+    }
     communityClusters = await getCommunityClusters(driver, entityNodes, groupIds);
   }
 
@@ -539,23 +556,26 @@ export async function buildCommunities(
   console.log(`[communities] ${communityClusters.length} clusters detected, summarizing...`);
 
   // Phase 2: Batched summarization
+  const maxMembersPerSummary = config.max_members_per_summary ?? MAX_MEMBERS_PER_SUMMARY;
+  const batchSize = config.batch_size ?? MAX_BATCH_SIZE;
+
   // Prepare member summaries for each community (capped at MAX_MEMBERS_PER_SUMMARY)
   const allMemberSummaries: string[][] = communityClusters.map((cluster) =>
-    cluster.slice(0, MAX_MEMBERS_PER_SUMMARY).map((e) => e.summary)
+    cluster.slice(0, maxMembersPerSummary).map((e) => e.summary)
   );
 
   // Process in batches of MAX_BATCH_SIZE
   const allSummaries: string[] = [];
-  for (let i = 0; i < allMemberSummaries.length; i += MAX_BATCH_SIZE) {
-    const batch = allMemberSummaries.slice(i, i + MAX_BATCH_SIZE);
+  for (let i = 0; i < allMemberSummaries.length; i += batchSize) {
+    const batch = allMemberSummaries.slice(i, i + batchSize);
     const batchSummaries = await batchSummarize(llmClient, batch);
     allSummaries.push(...batchSummaries);
   }
 
   // Phase 3: Batched name generation
   const allNames: string[] = [];
-  for (let i = 0; i < allSummaries.length; i += MAX_BATCH_SIZE) {
-    const batch = allSummaries.slice(i, i + MAX_BATCH_SIZE);
+  for (let i = 0; i < allSummaries.length; i += batchSize) {
+    const batch = allSummaries.slice(i, i + batchSize);
     const batchNames = await batchGenerateNames(llmClient, batch);
     allNames.push(...batchNames);
   }
@@ -582,8 +602,8 @@ export async function buildCommunities(
     communityEdges.push(...buildCommunityEdges(cluster, communityNode, now));
   }
 
-  const summaryLLMCalls = Math.ceil(allMemberSummaries.length / MAX_BATCH_SIZE);
-  const nameLLMCalls = Math.ceil(allSummaries.length / MAX_BATCH_SIZE);
+  const summaryLLMCalls = Math.ceil(allMemberSummaries.length / batchSize);
+  const nameLLMCalls = Math.ceil(allSummaries.length / batchSize);
   console.log(`[communities] Built ${communityNodes.length} communities (${summaryLLMCalls + nameLLMCalls} LLM calls)`);
 
   return [communityNodes, communityEdges];
@@ -593,7 +613,22 @@ export async function buildCommunities(
 // Remove Communities
 // ---------------------------------------------------------------------------
 
-export async function removeCommunities(driver: GraphDriver): Promise<void> {
+export async function removeCommunities(
+  driver: GraphDriver,
+  groupIds: string[] | null = null
+): Promise<void> {
+  if (groupIds && groupIds.length > 0) {
+    await driver.executeQuery(
+      `
+        MATCH (c:Community)
+        WHERE c.group_id IN $group_ids
+        DETACH DELETE c
+      `,
+      { params: { group_ids: groupIds } }
+    );
+    return;
+  }
+
   await driver.executeQuery(`
     MATCH (c:Community)
     DETACH DELETE c

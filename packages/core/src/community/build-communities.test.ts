@@ -32,7 +32,10 @@ test('buildCommunities orchestration', async () => {
     async getByUuids(uuids: string[]) { return entities.filter((e) => uuids.includes(e.uuid)); }
   };
   const driver = {
-    async executeQuery(_q: string, opts?: any) {
+    async executeQuery(query: string, opts?: any) {
+      if (query.includes('gds.version')) {
+        return { records: [], summary: {} };
+      }
       const uuid = opts?.params?.uuid;
       return { records: [rec({ uuid: uuid === 'e1' ? 'e2' : 'e1', count: 2 })], summary: {} };
     }
@@ -40,4 +43,36 @@ test('buildCommunities orchestration', async () => {
   const [nodes, edges] = await buildCommunities(driver, llm, ns, ['g1']);
   expect(nodes).toHaveLength(1);
   expect(edges).toHaveLength(2);
+});
+
+test('buildCommunities can be forced to use label propagation', async () => {
+  const entities = [entity('e1', 'A', 'SA'), entity('e2', 'B', 'SB')];
+  const llm: LLMClient = {
+    model: 'fake', small_model: null, setTracer() {},
+    async generateText(): Promise<string> {
+      return '{"summary":"Team"}';
+    }
+  };
+  const ns: EntityNodeNamespaceReader = {
+    async getByGroupIds() { return entities; },
+    async getByUuids(uuids: string[]) { return entities.filter((e) => uuids.includes(e.uuid)); }
+  };
+  let gdsChecked = false;
+  const driver = {
+    async executeQuery(query: string, opts?: any) {
+      if (query.includes('gds.version')) {
+        gdsChecked = true;
+        return { records: [rec({ version: '2.0.0' })], summary: {} };
+      }
+      const uuid = opts?.params?.uuid;
+      return { records: [rec({ uuid: uuid === 'e1' ? 'e2' : 'e1', count: 2 })], summary: {} };
+    }
+  } as unknown as GraphDriver;
+
+  const [nodes] = await buildCommunities(driver, llm, ns, ['g1'], {
+    detection_strategy: 'label_propagation'
+  });
+
+  expect(gdsChecked).toBe(false);
+  expect(nodes).toHaveLength(1);
 });

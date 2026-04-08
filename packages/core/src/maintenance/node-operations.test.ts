@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { utcNow } from '@graphiti/shared';
 
 import type { GraphitiClients, LLMClient, EmbedderClient, GraphDriver } from '../contracts';
-import type { EntityNode, EpisodicNode } from '../domain/nodes';
+import { EpisodeTypes, type EntityNode, type EpisodicNode } from '../domain/nodes';
 import type { Message } from '../prompts/types';
 
 import { buildEntityTypesContext, extractNodes, resolveExtractedNodes, extractAttributesFromNodes } from './node-operations';
@@ -244,6 +244,13 @@ describe('extractNodes', () => {
   test('uses text prompt for text source type', async () => {
     const clients = makeMockClients([{ extracted_entities: [] }]);
     const episode = makeEpisode({ source: 'text' });
+    const nodes = await extractNodes(clients, episode, []);
+    expect(nodes).toHaveLength(0);
+  });
+
+  test('treats document source type as text extraction', async () => {
+    const clients = makeMockClients([{ extracted_entities: [] }]);
+    const episode = makeEpisode({ source: EpisodeTypes.document });
     const nodes = await extractNodes(clients, episode, []);
     expect(nodes).toHaveLength(0);
   });

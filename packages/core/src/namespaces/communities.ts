@@ -10,27 +10,34 @@ import type { CommunityEdgeOperations } from '../driver/operations/community-edg
 import { FalkorDriver } from '../driver/falkordb-driver';
 import { Neo4jDriver } from '../driver/neo4j-driver';
 
+type DriverProvider = GraphDriver | (() => GraphDriver);
+
+function getDriver(provider: DriverProvider): GraphDriver {
+  return typeof provider === 'function' ? provider() : provider;
+}
+
 export class CommunityNodeNamespace {
   constructor(
-    private readonly driver: GraphDriver,
+    private readonly driverProvider: DriverProvider,
     private readonly embedder?: EmbedderClient | null,
     private readonly ops?: CommunityNodeOperations
   ) {}
 
   async save(node: CommunityNode): Promise<CommunityNode> {
+    const driver = getDriver(this.driverProvider);
     validateGroupId(node.group_id);
 
     if (!node.name_embedding && this.embedder) {
       node.name_embedding = await this.embedder.create([node.name.replaceAll('\n', ' ')]);
     }
 
-    const ops = this.ops ?? resolveCommunityNodeOps(this.driver);
+    const ops = this.ops ?? resolveCommunityNodeOps(driver);
     if (ops) {
-      await ops.save(this.driver, node);
+      await ops.save(driver, node);
       return node;
     }
 
-    await this.driver.executeQuery(
+    await driver.executeQuery(
       `
         MERGE (n:Community {uuid: $node.uuid})
         SET n += $node
@@ -52,6 +59,7 @@ export class CommunityNodeNamespace {
   }
 
   async saveBulk(nodes: CommunityNode[]): Promise<CommunityNode[]> {
+    const driver = getDriver(this.driverProvider);
     if (nodes.length === 0) return [];
 
     for (const node of nodes) {
@@ -66,9 +74,9 @@ export class CommunityNodeNamespace {
       }
     }
 
-    const ops = this.ops ?? resolveCommunityNodeOps(this.driver);
+    const ops = this.ops ?? resolveCommunityNodeOps(driver);
     if (ops) {
-      await ops.saveBulk(this.driver, nodes);
+      await ops.saveBulk(driver, nodes);
       return nodes;
     }
 
@@ -80,12 +88,13 @@ export class CommunityNodeNamespace {
   }
 
   async getByUuid(uuid: string): Promise<CommunityNode> {
-    const ops = this.ops ?? resolveCommunityNodeOps(this.driver);
+    const driver = getDriver(this.driverProvider);
+    const ops = this.ops ?? resolveCommunityNodeOps(driver);
     if (ops) {
-      return ops.getByUuid(this.driver, uuid);
+      return ops.getByUuid(driver, uuid);
     }
 
-    const result = await this.driver.executeQuery<RecordLike>(
+    const result = await driver.executeQuery<RecordLike>(
       `
         MATCH (n:Community {uuid: $uuid})
         RETURN
@@ -110,14 +119,15 @@ export class CommunityNodeNamespace {
   }
 
   async getByUuids(uuids: string[]): Promise<CommunityNode[]> {
+    const driver = getDriver(this.driverProvider);
     if (uuids.length === 0) return [];
 
-    const ops = this.ops ?? resolveCommunityNodeOps(this.driver);
+    const ops = this.ops ?? resolveCommunityNodeOps(driver);
     if (ops) {
-      return ops.getByUuids(this.driver, uuids);
+      return ops.getByUuids(driver, uuids);
     }
 
-    const result = await this.driver.executeQuery<RecordLike>(
+    const result = await driver.executeQuery<RecordLike>(
       `
         MATCH (n:Community)
         WHERE n.uuid IN $uuids
@@ -138,14 +148,15 @@ export class CommunityNodeNamespace {
   }
 
   async getByGroupIds(groupIds: string[]): Promise<CommunityNode[]> {
+    const driver = getDriver(this.driverProvider);
     if (groupIds.length === 0) return [];
 
-    const ops = this.ops ?? resolveCommunityNodeOps(this.driver);
+    const ops = this.ops ?? resolveCommunityNodeOps(driver);
     if (ops) {
-      return ops.getByGroupIds(this.driver, groupIds);
+      return ops.getByGroupIds(driver, groupIds);
     }
 
-    const result = await this.driver.executeQuery<RecordLike>(
+    const result = await driver.executeQuery<RecordLike>(
       `
         MATCH (n:Community)
         WHERE n.group_id IN $group_ids
@@ -166,15 +177,16 @@ export class CommunityNodeNamespace {
   }
 
   async deleteByUuids(uuids: string[]): Promise<void> {
+    const driver = getDriver(this.driverProvider);
     if (uuids.length === 0) return;
 
-    const ops = this.ops ?? resolveCommunityNodeOps(this.driver);
+    const ops = this.ops ?? resolveCommunityNodeOps(driver);
     if (ops) {
-      await ops.deleteByUuids(this.driver, uuids);
+      await ops.deleteByUuids(driver, uuids);
       return;
     }
 
-    await this.driver.executeQuery(
+    await driver.executeQuery(
       `
         MATCH (n:Community)
         WHERE n.uuid IN $uuids
@@ -187,15 +199,16 @@ export class CommunityNodeNamespace {
   }
 
   async deleteByGroupId(groupId: string): Promise<void> {
+    const driver = getDriver(this.driverProvider);
     validateGroupId(groupId);
 
-    const ops = this.ops ?? resolveCommunityNodeOps(this.driver);
+    const ops = this.ops ?? resolveCommunityNodeOps(driver);
     if (ops) {
-      await ops.deleteByGroupId(this.driver, groupId);
+      await ops.deleteByGroupId(driver, groupId);
       return;
     }
 
-    await this.driver.executeQuery(
+    await driver.executeQuery(
       `
         MATCH (n:Community)
         WHERE n.group_id = $group_id
@@ -210,20 +223,21 @@ export class CommunityNodeNamespace {
 
 export class CommunityEdgeNamespace {
   constructor(
-    private readonly driver: GraphDriver,
+    private readonly driverProvider: DriverProvider,
     private readonly ops?: CommunityEdgeOperations
   ) {}
 
   async save(edge: CommunityEdge): Promise<CommunityEdge> {
+    const driver = getDriver(this.driverProvider);
     validateGroupId(edge.group_id);
 
-    const ops = this.ops ?? resolveCommunityEdgeOps(this.driver);
+    const ops = this.ops ?? resolveCommunityEdgeOps(driver);
     if (ops) {
-      await ops.save(this.driver, edge);
+      await ops.save(driver, edge);
       return edge;
     }
 
-    await this.driver.executeQuery(
+    await driver.executeQuery(
       `
         MATCH (community:Community {uuid: $community_uuid})
         MATCH (member {uuid: $member_uuid})
@@ -244,15 +258,16 @@ export class CommunityEdgeNamespace {
   }
 
   async saveBulk(edges: CommunityEdge[]): Promise<CommunityEdge[]> {
+    const driver = getDriver(this.driverProvider);
     if (edges.length === 0) return [];
 
     for (const edge of edges) {
       validateGroupId(edge.group_id);
     }
 
-    const ops = this.ops ?? resolveCommunityEdgeOps(this.driver);
+    const ops = this.ops ?? resolveCommunityEdgeOps(driver);
     if (ops) {
-      await ops.saveBulk(this.driver, edges);
+      await ops.saveBulk(driver, edges);
       return edges;
     }
 
@@ -264,12 +279,13 @@ export class CommunityEdgeNamespace {
   }
 
   async getByUuid(uuid: string): Promise<CommunityEdge> {
-    const ops = this.ops ?? resolveCommunityEdgeOps(this.driver);
+    const driver = getDriver(this.driverProvider);
+    const ops = this.ops ?? resolveCommunityEdgeOps(driver);
     if (ops) {
-      return ops.getByUuid(this.driver, uuid);
+      return ops.getByUuid(driver, uuid);
     }
 
-    const result = await this.driver.executeQuery<RecordLike>(
+    const result = await driver.executeQuery<RecordLike>(
       `
         MATCH (n:Community)-[e:HAS_MEMBER {uuid: $uuid}]->(m)
         RETURN
@@ -292,14 +308,15 @@ export class CommunityEdgeNamespace {
   }
 
   async getByUuids(uuids: string[]): Promise<CommunityEdge[]> {
+    const driver = getDriver(this.driverProvider);
     if (uuids.length === 0) return [];
 
-    const ops = this.ops ?? resolveCommunityEdgeOps(this.driver);
+    const ops = this.ops ?? resolveCommunityEdgeOps(driver);
     if (ops) {
-      return ops.getByUuids(this.driver, uuids);
+      return ops.getByUuids(driver, uuids);
     }
 
-    const result = await this.driver.executeQuery<RecordLike>(
+    const result = await driver.executeQuery<RecordLike>(
       `
         MATCH (n:Community)-[e:HAS_MEMBER]->(m)
         WHERE e.uuid IN $uuids
@@ -318,15 +335,16 @@ export class CommunityEdgeNamespace {
   }
 
   async deleteByUuids(uuids: string[]): Promise<void> {
+    const driver = getDriver(this.driverProvider);
     if (uuids.length === 0) return;
 
-    const ops = this.ops ?? resolveCommunityEdgeOps(this.driver);
+    const ops = this.ops ?? resolveCommunityEdgeOps(driver);
     if (ops) {
-      await ops.deleteByUuids(this.driver, uuids);
+      await ops.deleteByUuids(driver, uuids);
       return;
     }
 
-    await this.driver.executeQuery(
+    await driver.executeQuery(
       `
         MATCH ()-[e:HAS_MEMBER]->()
         WHERE e.uuid IN $uuids
@@ -369,14 +387,12 @@ export interface CommunityNamespaceApi {
 }
 
 export function createCommunityNamespace(
-  driver: GraphDriver,
+  driver: DriverProvider,
   embedder?: EmbedderClient | null
 ): CommunityNamespaceApi {
-  const nodeOps = resolveCommunityNodeOps(driver);
-  const edgeOps = resolveCommunityEdgeOps(driver);
   return {
-    node: new CommunityNodeNamespace(driver, embedder, nodeOps),
-    edge: new CommunityEdgeNamespace(driver, edgeOps)
+    node: new CommunityNodeNamespace(driver, embedder),
+    edge: new CommunityEdgeNamespace(driver)
   };
 }
 

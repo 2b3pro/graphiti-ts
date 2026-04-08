@@ -214,6 +214,6 @@ describe('updateCommunity', () => {
 
 describe('constants', () => {
   test('concurrency', () => {
-    expect(MAX_COMMUNITY_BUILD_CONCURRENCY).toBe(10);
+    expect(MAX_COMMUNITY_BUILD_CONCURRENCY).toBe(2);
   });
 });

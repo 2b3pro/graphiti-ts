@@ -13,14 +13,21 @@ import type { EpisodeNodeOperations } from '../driver/operations/episode-node-op
 import { FalkorDriver } from '../driver/falkordb-driver';
 import { Neo4jDriver } from '../driver/neo4j-driver';
 
+type DriverProvider = GraphDriver | (() => GraphDriver);
+
+function getDriver(provider: DriverProvider): GraphDriver {
+  return typeof provider === 'function' ? provider() : provider;
+}
+
 export class EntityNodeNamespace {
   constructor(
-    private readonly driver: GraphDriver,
+    private readonly driverProvider: DriverProvider,
     private readonly embedder?: EmbedderClient | null,
     private readonly ops?: EntityNodeOperations
   ) {}
 
   async save(node: EntityNode): Promise<EntityNode> {
+    const driver = getDriver(this.driverProvider);
     validateGroupId(node.group_id);
     validateNodeLabels(node.labels);
 
@@ -28,13 +35,13 @@ export class EntityNodeNamespace {
       node.name_embedding = await this.embedder.create([node.name.replaceAll('\n', ' ')]);
     }
 
-    const ops = this.ops ?? resolveEntityNodeOps(this.driver);
+    const ops = this.ops ?? resolveEntityNodeOps(driver);
     if (ops) {
-      await ops.save(this.driver, node);
+      await ops.save(driver, node);
       return node;
     }
 
-    await this.driver.executeQuery(
+    await driver.executeQuery(
       `
         MERGE (n:Entity {uuid: $entity.uuid})
         SET n += $entity
@@ -56,12 +63,13 @@ export class EntityNodeNamespace {
   }
 
   async getByUuid(uuid: string): Promise<EntityNode> {
-    const ops = this.ops ?? resolveEntityNodeOps(this.driver);
+    const driver = getDriver(this.driverProvider);
+    const ops = this.ops ?? resolveEntityNodeOps(driver);
     if (ops) {
-      return ops.getByUuid(this.driver, uuid);
+      return ops.getByUuid(driver, uuid);
     }
 
-    const result = await this.driver.executeQuery<RecordLike>(
+    const result = await driver.executeQuery<RecordLike>(
       `
         MATCH (n:Entity {uuid: $uuid})
         RETURN
@@ -86,6 +94,7 @@ export class EntityNodeNamespace {
   }
 
   async saveBulk(nodes: EntityNode[]): Promise<EntityNode[]> {
+    const driver = getDriver(this.driverProvider);
     if (nodes.length === 0) return [];
 
     for (const node of nodes) {
@@ -101,9 +110,9 @@ export class EntityNodeNamespace {
       }
     }
 
-    const ops = this.ops ?? resolveEntityNodeOps(this.driver);
+    const ops = this.ops ?? resolveEntityNodeOps(driver);
     if (ops) {
-      await ops.saveBulk(this.driver, nodes);
+      await ops.saveBulk(driver, nodes);
       return nodes;
     }
 
@@ -115,14 +124,15 @@ export class EntityNodeNamespace {
   }
 
   async getByUuids(uuids: string[]): Promise<EntityNode[]> {
+    const driver = getDriver(this.driverProvider);
     if (uuids.length === 0) return [];
 
-    const ops = this.ops ?? resolveEntityNodeOps(this.driver);
+    const ops = this.ops ?? resolveEntityNodeOps(driver);
     if (ops) {
-      return ops.getByUuids(this.driver, uuids);
+      return ops.getByUuids(driver, uuids);
     }
 
-    const result = await this.driver.executeQuery<RecordLike>(
+    const result = await driver.executeQuery<RecordLike>(
       `
         MATCH (n:Entity)
         WHERE n.uuid IN $uuids
@@ -143,14 +153,15 @@ export class EntityNodeNamespace {
   }
 
   async getByGroupIds(groupIds: string[]): Promise<EntityNode[]> {
+    const driver = getDriver(this.driverProvider);
     if (groupIds.length === 0) return [];
 
-    const ops = this.ops ?? resolveEntityNodeOps(this.driver);
+    const ops = this.ops ?? resolveEntityNodeOps(driver);
     if (ops) {
-      return ops.getByGroupIds(this.driver, groupIds);
+      return ops.getByGroupIds(driver, groupIds);
     }
 
-    const result = await this.driver.executeQuery<RecordLike>(
+    const result = await driver.executeQuery<RecordLike>(
       `
         MATCH (n:Entity)
         WHERE n.group_id IN $group_ids
@@ -171,15 +182,16 @@ export class EntityNodeNamespace {
   }
 
   async deleteByUuids(uuids: string[]): Promise<void> {
+    const driver = getDriver(this.driverProvider);
     if (uuids.length === 0) return;
 
-    const ops = this.ops ?? resolveEntityNodeOps(this.driver);
+    const ops = this.ops ?? resolveEntityNodeOps(driver);
     if (ops) {
-      await ops.deleteByUuids(this.driver, uuids);
+      await ops.deleteByUuids(driver, uuids);
       return;
     }
 
-    await this.driver.executeQuery(
+    await driver.executeQuery(
       `
         MATCH (n:Entity)
         WHERE n.uuid IN $uuids
@@ -192,15 +204,16 @@ export class EntityNodeNamespace {
   }
 
   async deleteByGroupId(groupId: string): Promise<void> {
+    const driver = getDriver(this.driverProvider);
     validateGroupId(groupId);
 
-    const ops = this.ops ?? resolveEntityNodeOps(this.driver);
+    const ops = this.ops ?? resolveEntityNodeOps(driver);
     if (ops) {
-      await ops.deleteByGroupId(this.driver, groupId);
+      await ops.deleteByGroupId(driver, groupId);
       return;
     }
 
-    await this.driver.executeQuery(
+    await driver.executeQuery(
       `
         MATCH (n:Entity)
         WHERE n.group_id = $group_id
@@ -215,20 +228,21 @@ export class EntityNodeNamespace {
 
 export class EpisodeNodeNamespace {
   constructor(
-    private readonly driver: GraphDriver,
+    private readonly driverProvider: DriverProvider,
     private readonly ops?: EpisodeNodeOperations
   ) {}
 
   async save(node: EpisodicNode): Promise<EpisodicNode> {
+    const driver = getDriver(this.driverProvider);
     validateGroupId(node.group_id);
 
-    const ops = this.ops ?? resolveEpisodeNodeOps(this.driver);
+    const ops = this.ops ?? resolveEpisodeNodeOps(driver);
     if (ops) {
-      await ops.save(this.driver, node);
+      await ops.save(driver, node);
       return node;
     }
 
-    await this.driver.executeQuery(
+    await driver.executeQuery(
       `
         MERGE (n:Episodic {uuid: $episode.uuid})
         SET n += $episode
@@ -246,12 +260,13 @@ export class EpisodeNodeNamespace {
   }
 
   async getByUuid(uuid: string): Promise<EpisodicNode> {
-    const ops = this.ops ?? resolveEpisodeNodeOps(this.driver);
+    const driver = getDriver(this.driverProvider);
+    const ops = this.ops ?? resolveEpisodeNodeOps(driver);
     if (ops) {
-      return ops.getByUuid(this.driver, uuid);
+      return ops.getByUuid(driver, uuid);
     }
 
-    const result = await this.driver.executeQuery<RecordLike>(
+    const result = await driver.executeQuery<RecordLike>(
       `
         MATCH (n:Episodic {uuid: $uuid})
         RETURN
@@ -282,6 +297,7 @@ export class EpisodeNodeNamespace {
     lastN = 10,
     referenceTime?: Date | null
   ): Promise<EpisodicNode[]> {
+    const driver = getDriver(this.driverProvider);
     if (groupIds.length === 0) {
       return [];
     }
@@ -297,7 +313,7 @@ export class EpisodeNodeNamespace {
       whereClauses.push('(n.created_at <= $reference_time OR n.valid_at <= $reference_time)');
     }
 
-    const result = await this.driver.executeQuery<RecordLike>(
+    const result = await driver.executeQuery<RecordLike>(
       `
         MATCH (n:Episodic)
         WHERE ${whereClauses.join(' AND ')}
@@ -322,13 +338,14 @@ export class EpisodeNodeNamespace {
   }
 
   async deleteByUuid(uuid: string): Promise<void> {
-    const ops = this.ops ?? resolveEpisodeNodeOps(this.driver);
+    const driver = getDriver(this.driverProvider);
+    const ops = this.ops ?? resolveEpisodeNodeOps(driver);
     if (ops) {
-      await ops.deleteByUuid(this.driver, uuid);
+      await ops.deleteByUuid(driver, uuid);
       return;
     }
 
-    const result = await this.driver.executeQuery<{ deleted_count: number }>(
+    const result = await driver.executeQuery<{ deleted_count: number }>(
       `
         MATCH (n:Episodic {uuid: $uuid})
         WITH collect(n) AS nodes
@@ -344,15 +361,16 @@ export class EpisodeNodeNamespace {
   }
 
   async saveBulk(nodes: EpisodicNode[]): Promise<EpisodicNode[]> {
+    const driver = getDriver(this.driverProvider);
     if (nodes.length === 0) return [];
 
     for (const node of nodes) {
       validateGroupId(node.group_id);
     }
 
-    const ops = this.ops ?? resolveEpisodeNodeOps(this.driver);
+    const ops = this.ops ?? resolveEpisodeNodeOps(driver);
     if (ops) {
-      await ops.saveBulk(this.driver, nodes);
+      await ops.saveBulk(driver, nodes);
       return nodes;
     }
 
@@ -364,14 +382,15 @@ export class EpisodeNodeNamespace {
   }
 
   async getByUuids(uuids: string[]): Promise<EpisodicNode[]> {
+    const driver = getDriver(this.driverProvider);
     if (uuids.length === 0) return [];
 
-    const ops = this.ops ?? resolveEpisodeNodeOps(this.driver);
+    const ops = this.ops ?? resolveEpisodeNodeOps(driver);
     if (ops) {
-      return ops.getByUuids(this.driver, uuids);
+      return ops.getByUuids(driver, uuids);
     }
 
-    const result = await this.driver.executeQuery<RecordLike>(
+    const result = await driver.executeQuery<RecordLike>(
       `
         MATCH (n:Episodic)
         WHERE n.uuid IN $uuids
@@ -394,15 +413,16 @@ export class EpisodeNodeNamespace {
   }
 
   async deleteByUuids(uuids: string[]): Promise<void> {
+    const driver = getDriver(this.driverProvider);
     if (uuids.length === 0) return;
 
-    const ops = this.ops ?? resolveEpisodeNodeOps(this.driver);
+    const ops = this.ops ?? resolveEpisodeNodeOps(driver);
     if (ops) {
-      await ops.deleteByUuids(this.driver, uuids);
+      await ops.deleteByUuids(driver, uuids);
       return;
     }
 
-    await this.driver.executeQuery(
+    await driver.executeQuery(
       `
         MATCH (n:Episodic)
         WHERE n.uuid IN $uuids
@@ -415,15 +435,16 @@ export class EpisodeNodeNamespace {
   }
 
   async deleteByGroupId(groupId: string): Promise<void> {
+    const driver = getDriver(this.driverProvider);
     validateGroupId(groupId);
 
-    const ops = this.ops ?? resolveEpisodeNodeOps(this.driver);
+    const ops = this.ops ?? resolveEpisodeNodeOps(driver);
     if (ops) {
-      await ops.deleteByGroupId(this.driver, groupId);
+      await ops.deleteByGroupId(driver, groupId);
       return;
     }
 
-    await this.driver.executeQuery(
+    await driver.executeQuery(
       `
         MATCH (n:Episodic)
         WHERE n.group_id = $group_id
@@ -442,15 +463,12 @@ export interface NodeNamespaceApi {
 }
 
 export function createNodeNamespace(
-  driver: GraphDriver,
+  driver: DriverProvider,
   embedder?: EmbedderClient | null
 ): NodeNamespaceApi {
-  const ops = resolveEntityNodeOps(driver);
-  const episodeOps = resolveEpisodeNodeOps(driver);
-
   return {
-    entity: new EntityNodeNamespace(driver, embedder, ops),
-    episode: new EpisodeNodeNamespace(driver, episodeOps)
+    entity: new EntityNodeNamespace(driver, embedder),
+    episode: new EpisodeNodeNamespace(driver)
   };
 }
 

@@ -1,7 +1,7 @@
 /**
  * Edge Quality Gate — scoring function for edge creation decisions.
  *
- * Called by the consumer (PAI integration layer) during ingestion to decide
+ * Called by the consumer during ingestion to decide
  * whether an edge is worth persisting. Does NOT modify the ingestion pipeline.
  */
 

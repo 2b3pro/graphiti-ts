@@ -3,8 +3,6 @@ import { utcNow } from '@graphiti/shared';
 
 import type { EntityEdge, EpisodicEdge } from '../domain/edges';
 import type { EntityNode, EpisodicNode } from '../domain/nodes';
-import type { Message } from '../prompts/types';
-
 import { addNodesAndEdgesBulk } from './bulk-utils';
 
 // ---------------------------------------------------------------------------
@@ -79,6 +77,25 @@ function makeMockEmbedder() {
   };
 }
 
+function makeBatchEmbedder() {
+  const createCalls: string[][] = [];
+  const createBatchCalls: string[][] = [];
+  return {
+    embedder: {
+      create: async (texts: string[]) => {
+        createCalls.push(texts);
+        return [0.1, 0.2, 0.3];
+      },
+      createBatch: async (texts: string[]) => {
+        createBatchCalls.push(texts);
+        return texts.map(() => [0.1, 0.2, 0.3]);
+      }
+    },
+    createCalls,
+    createBatchCalls
+  };
+}
+
 function makeMockDriver() {
   const queries: Array<{ query: string; params: Record<string, unknown> }> = [];
   return {
@@ -142,6 +159,23 @@ describe('addNodesAndEdgesBulk', () => {
     expect(createCalls[0]![0]).toContain('Alice works at Acme');
   });
 
+  test('prefers batch embedding generation when configured and supported', async () => {
+    const { embedder, createCalls, createBatchCalls } = makeBatchEmbedder();
+    const { driver } = makeMockDriver();
+
+    const nodes = [makeNode('n1', 'Alice'), makeNode('n2', 'Bob')];
+    const edges = [makeEntityEdge('e1', 'n1', 'n2', 'Alice knows Bob')];
+
+    await addNodesAndEdgesBulk(driver, [], [], nodes, edges, embedder, {
+      prefer_batch_embeddings: true
+    });
+
+    expect(createCalls.length).toBe(0);
+    expect(createBatchCalls).toHaveLength(2);
+    expect(createBatchCalls[0]).toEqual(['Alice', 'Bob']);
+    expect(createBatchCalls[1]).toEqual(['Alice knows Bob']);
+  });
+
   test('saves episodes to database', async () => {
     const { embedder } = makeMockEmbedder();
     const { driver, queries } = makeMockDriver();
@@ -151,7 +185,11 @@ describe('addNodesAndEdgesBulk', () => {
 
     const episodeQueries = queries.filter((q) => q.query.includes('Episodic'));
     expect(episodeQueries.length).toBe(1);
-    expect(episodeQueries[0]!.params.uuid).toBe('ep1');
+    expect(episodeQueries[0]!.params.episode).toMatchObject({
+      uuid: 'ep1',
+      content: 'Hello world'
+    });
+    expect(episodeQueries[0]!.params.labels).toEqual(['Episodic']);
   });
 
   test('saves entity nodes to database', async () => {
@@ -187,6 +225,44 @@ describe('addNodesAndEdgesBulk', () => {
 
     const edgeQueries = queries.filter((q) => q.query.includes('RELATES_TO'));
     expect(edgeQueries.length).toBe(1);
+  });
+
+  test('persists full serialized entity and edge fields in bulk mode', async () => {
+    const { embedder } = makeMockEmbedder();
+    const { driver, queries } = makeMockDriver();
+
+    const node = makeNode('n1', 'Alice');
+    node.attributes = { role: 'engineer', sources: ['chat'] };
+
+    const edge = makeEntityEdge('e1', 'n1', 'n2', 'Alice knows Bob');
+    edge.confidence = [0.91, 0.91, 0.91];
+    edge.epistemic_status = 'claim';
+    edge.conditions = [{ type: 'temporal', value: 'current' }] as any;
+    edge.interpretations = [{ interpretation: 'colleagues', confidence: 0.8 }] as any;
+    edge.attributes = { deprecation_reason: null };
+
+    await addNodesAndEdgesBulk(driver, [], [], [node], [edge], embedder);
+
+    const nodeQuery = queries.find((q) => q.query.includes('MERGE (n:Entity'))!;
+    const edgeQuery = queries.find((q) => q.query.includes('MERGE (source)-[e:RELATES_TO'))!;
+
+    expect(nodeQuery.params.entity).toMatchObject({
+      uuid: 'n1'
+    });
+    expect(JSON.parse((nodeQuery.params.entity as any).attributes)).toEqual({
+      role: 'engineer',
+      sources: ['chat']
+    });
+    expect(edgeQuery.params.edge).toMatchObject({
+      uuid: 'e1',
+      confidence: [0.91, 0.91, 0.91],
+      epistemic_status: 'claim'
+    });
+    expect(JSON.parse((edgeQuery.params.edge as any).attributes)).toEqual({
+      deprecation_reason: null
+    });
+    expect(JSON.parse((edgeQuery.params.edge as any).conditions)).toBeArray();
+    expect(JSON.parse((edgeQuery.params.edge as any).interpretations)).toBeArray();
   });
 
   test('handles all empty inputs', async () => {

@@ -21,6 +21,9 @@ export const ENTITY_EDGE_FIELDS = `
   e.expired_at AS expired_at,
   e.valid_at AS valid_at,
   e.invalid_at AS invalid_at,
+  e.attributes AS attributes,
+  e.deprecation_reason AS deprecation_reason,
+  e.superseded_by AS superseded_by,
   e.confidence AS confidence,
   e.epistemic_status AS epistemic_status,
   e.supported_by AS supported_by,
@@ -45,4 +48,3 @@ export const ENTITY_EDGE_RETURN_FIELDS = `
   source.uuid AS source_node_uuid,
   target.uuid AS target_node_uuid,
   ${ENTITY_EDGE_FIELDS}`.trim();
-

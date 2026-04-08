@@ -8,6 +8,7 @@ import { MessageRoles, type Message } from '../prompts/types';
 export interface EpisodeExtractionContext {
   episode: EpisodicNode;
   previous_episodes: EpisodicNode[];
+  extraction_instructions?: string | null;
 }
 
 export interface EpisodeExtractionResult {
@@ -198,6 +199,11 @@ function dedupeEdges(edges: EntityEdge[]): EntityEdge[] {
 }
 
 export function buildEpisodeExtractionPrompt(context: EpisodeExtractionContext): Message[] {
+  const extractionInstructions =
+    context.extraction_instructions && context.extraction_instructions.trim().length > 0
+      ? `\nAdditional instructions: ${context.extraction_instructions.trim()}`
+      : '';
+
   return [
     {
       role: MessageRoles.system,
@@ -212,6 +218,7 @@ export function buildEpisodeExtractionPrompt(context: EpisodeExtractionContext):
             'Return canonical entities mentioned in the episode. Each entity must include name and may include labels, summary, and aliases.',
           entity_edges:
             'Return factual directed relations with source, target, name, and fact. Use snake_case relation names.',
+          additional_instructions: extractionInstructions || undefined,
           output_shape: {
             entities: [
               {

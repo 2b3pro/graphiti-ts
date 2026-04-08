@@ -187,6 +187,29 @@ describe('heuristic episode extractor', () => {
     expect(result.entity_edges[0]?.name).toBe('works_with');
   });
 
+  test('includes extraction instructions in the model prompt when provided', () => {
+    const episode: EpisodicNode = {
+      uuid: 'episode-prompt-1',
+      name: 'episode',
+      group_id: 'group',
+      labels: [],
+      created_at: utcNow(),
+      source: EpisodeTypes.text,
+      source_description: 'chat',
+      content: 'Alice works with Bob',
+      valid_at: utcNow(),
+      entity_edges: []
+    };
+
+    const messages = buildEpisodeExtractionPrompt({
+      episode,
+      previous_episodes: [],
+      extraction_instructions: 'Focus on formal roles only.'
+    });
+
+    expect(messages[1]?.content).toContain('Focus on formal roles only.');
+  });
+
   test('falls back to the heuristic extractor when model output is invalid', async () => {
     const fallback = new HeuristicEpisodeExtractor();
     const extractor = new ModelEpisodeExtractor(new BrokenLLMClient(), fallback);

@@ -13,27 +13,34 @@ import { FalkorDriver } from '../driver/falkordb-driver';
 import { Neo4jDriver } from '../driver/neo4j-driver';
 import { ENTITY_EDGE_RETURN_FIELDS } from '../driver/cypher-fields';
 
+type DriverProvider = GraphDriver | (() => GraphDriver);
+
+function getDriver(provider: DriverProvider): GraphDriver {
+  return typeof provider === 'function' ? provider() : provider;
+}
+
 export class EntityEdgeNamespace {
   constructor(
-    private readonly driver: GraphDriver,
+    private readonly driverProvider: DriverProvider,
     private readonly embedder?: EmbedderClient | null,
     private readonly ops?: EntityEdgeOperations
   ) {}
 
   async save(edge: EntityEdge): Promise<EntityEdge> {
+    const driver = getDriver(this.driverProvider);
     validateGroupId(edge.group_id);
 
     if (!edge.fact_embedding && this.embedder) {
       edge.fact_embedding = await this.embedder.create([edge.fact.replaceAll('\n', ' ')]);
     }
 
-    const ops = this.ops ?? resolveEntityEdgeOps(this.driver);
+    const ops = this.ops ?? resolveEntityEdgeOps(driver);
     if (ops) {
-      await ops.save(this.driver, edge);
+      await ops.save(driver, edge);
       return edge;
     }
 
-    await this.driver.executeQuery(
+    await driver.executeQuery(
       `
         MATCH (source:Entity {uuid: $source_uuid})
         MATCH (target:Entity {uuid: $target_uuid})
@@ -54,12 +61,13 @@ export class EntityEdgeNamespace {
   }
 
   async getByUuid(uuid: string): Promise<EntityEdge> {
-    const ops = this.ops ?? resolveEntityEdgeOps(this.driver);
+    const driver = getDriver(this.driverProvider);
+    const ops = this.ops ?? resolveEntityEdgeOps(driver);
     if (ops) {
-      return ops.getByUuid(this.driver, uuid);
+      return ops.getByUuid(driver, uuid);
     }
 
-    const result = await this.driver.executeQuery<RecordLike>(
+    const result = await driver.executeQuery<RecordLike>(
       `
         MATCH (source:Entity)-[e:RELATES_TO {uuid: $uuid}]->(target:Entity)
         RETURN
@@ -77,13 +85,14 @@ export class EntityEdgeNamespace {
   }
 
   async deleteByUuid(uuid: string): Promise<void> {
-    const ops = this.ops ?? resolveEntityEdgeOps(this.driver);
+    const driver = getDriver(this.driverProvider);
+    const ops = this.ops ?? resolveEntityEdgeOps(driver);
     if (ops) {
-      await ops.deleteByUuid(this.driver, uuid);
+      await ops.deleteByUuid(driver, uuid);
       return;
     }
 
-    const result = await this.driver.executeQuery<{ deleted_count: number }>(
+    const result = await driver.executeQuery<{ deleted_count: number }>(
       `
         MATCH ()-[e:RELATES_TO {uuid: $uuid}]->()
         WITH collect(e) AS edges
@@ -99,6 +108,7 @@ export class EntityEdgeNamespace {
   }
 
   async saveBulk(edges: EntityEdge[]): Promise<EntityEdge[]> {
+    const driver = getDriver(this.driverProvider);
     if (edges.length === 0) return [];
 
     for (const edge of edges) {
@@ -113,9 +123,9 @@ export class EntityEdgeNamespace {
       }
     }
 
-    const ops = this.ops ?? resolveEntityEdgeOps(this.driver);
+    const ops = this.ops ?? resolveEntityEdgeOps(driver);
     if (ops) {
-      await ops.saveBulk(this.driver, edges);
+      await ops.saveBulk(driver, edges);
       return edges;
     }
 
@@ -127,14 +137,15 @@ export class EntityEdgeNamespace {
   }
 
   async getByUuids(uuids: string[]): Promise<EntityEdge[]> {
+    const driver = getDriver(this.driverProvider);
     if (uuids.length === 0) return [];
 
-    const ops = this.ops ?? resolveEntityEdgeOps(this.driver);
+    const ops = this.ops ?? resolveEntityEdgeOps(driver);
     if (ops) {
-      return ops.getByUuids(this.driver, uuids);
+      return ops.getByUuids(driver, uuids);
     }
 
-    const result = await this.driver.executeQuery<RecordLike>(
+    const result = await driver.executeQuery<RecordLike>(
       `
         MATCH (source:Entity)-[e:RELATES_TO]->(target:Entity)
         WHERE e.uuid IN $uuids
@@ -148,14 +159,15 @@ export class EntityEdgeNamespace {
   }
 
   async getByGroupIds(groupIds: string[]): Promise<EntityEdge[]> {
+    const driver = getDriver(this.driverProvider);
     if (groupIds.length === 0) return [];
 
-    const ops = this.ops ?? resolveEntityEdgeOps(this.driver);
+    const ops = this.ops ?? resolveEntityEdgeOps(driver);
     if (ops) {
-      return ops.getByGroupIds(this.driver, groupIds);
+      return ops.getByGroupIds(driver, groupIds);
     }
 
-    const result = await this.driver.executeQuery<RecordLike>(
+    const result = await driver.executeQuery<RecordLike>(
       `
         MATCH (source:Entity)-[e:RELATES_TO]->(target:Entity)
         WHERE e.group_id IN $group_ids
@@ -172,12 +184,13 @@ export class EntityEdgeNamespace {
     sourceNodeUuid: string,
     targetNodeUuid: string
   ): Promise<EntityEdge[]> {
-    const ops = this.ops ?? resolveEntityEdgeOps(this.driver);
+    const driver = getDriver(this.driverProvider);
+    const ops = this.ops ?? resolveEntityEdgeOps(driver);
     if (ops) {
-      return ops.getBetweenNodes(this.driver, sourceNodeUuid, targetNodeUuid);
+      return ops.getBetweenNodes(driver, sourceNodeUuid, targetNodeUuid);
     }
 
-    const result = await this.driver.executeQuery<RecordLike>(
+    const result = await driver.executeQuery<RecordLike>(
       `
         MATCH (source:Entity {uuid: $source_uuid})-[e:RELATES_TO]->(target:Entity {uuid: $target_uuid})
         WHERE e.expired_at IS NULL
@@ -191,12 +204,13 @@ export class EntityEdgeNamespace {
   }
 
   async getByNodeUuid(nodeUuid: string): Promise<EntityEdge[]> {
-    const ops = this.ops ?? resolveEntityEdgeOps(this.driver);
+    const driver = getDriver(this.driverProvider);
+    const ops = this.ops ?? resolveEntityEdgeOps(driver);
     if (ops) {
-      return ops.getByNodeUuid(this.driver, nodeUuid);
+      return ops.getByNodeUuid(driver, nodeUuid);
     }
 
-    const result = await this.driver.executeQuery<RecordLike>(
+    const result = await driver.executeQuery<RecordLike>(
       `
         MATCH (source:Entity)-[e:RELATES_TO]->(target:Entity)
         WHERE source.uuid = $node_uuid OR target.uuid = $node_uuid
@@ -210,15 +224,16 @@ export class EntityEdgeNamespace {
   }
 
   async deleteByUuids(uuids: string[]): Promise<void> {
+    const driver = getDriver(this.driverProvider);
     if (uuids.length === 0) return;
 
-    const ops = this.ops ?? resolveEntityEdgeOps(this.driver);
+    const ops = this.ops ?? resolveEntityEdgeOps(driver);
     if (ops) {
-      await ops.deleteByUuids(this.driver, uuids);
+      await ops.deleteByUuids(driver, uuids);
       return;
     }
 
-    await this.driver.executeQuery(
+    await driver.executeQuery(
       `
         MATCH ()-[e:RELATES_TO]->()
         WHERE e.uuid IN $uuids
@@ -231,15 +246,16 @@ export class EntityEdgeNamespace {
   }
 
   async deleteByGroupId(groupId: string): Promise<void> {
+    const driver = getDriver(this.driverProvider);
     validateGroupId(groupId);
 
-    const ops = this.ops ?? resolveEntityEdgeOps(this.driver);
+    const ops = this.ops ?? resolveEntityEdgeOps(driver);
     if (ops) {
-      await ops.deleteByGroupId(this.driver, groupId);
+      await ops.deleteByGroupId(driver, groupId);
       return;
     }
 
-    await this.driver.executeQuery(
+    await driver.executeQuery(
       `
         MATCH ()-[e:RELATES_TO]->()
         WHERE e.group_id = $group_id
@@ -254,20 +270,21 @@ export class EntityEdgeNamespace {
 
 export class EpisodicEdgeNamespace {
   constructor(
-    private readonly driver: GraphDriver,
+    private readonly driverProvider: DriverProvider,
     private readonly ops?: EpisodicEdgeOperations
   ) {}
 
   async save(edge: EpisodicEdge): Promise<EpisodicEdge> {
+    const driver = getDriver(this.driverProvider);
     validateGroupId(edge.group_id);
 
-    const ops = this.ops ?? resolveEpisodicEdgeOps(this.driver);
+    const ops = this.ops ?? resolveEpisodicEdgeOps(driver);
     if (ops) {
-      await ops.save(this.driver, edge);
+      await ops.save(driver, edge);
       return edge;
     }
 
-    await this.driver.executeQuery(
+    await driver.executeQuery(
       `
         MATCH (episode:Episodic {uuid: $source_uuid})
         MATCH (entity:Entity {uuid: $target_uuid})
@@ -288,15 +305,16 @@ export class EpisodicEdgeNamespace {
   }
 
   async saveBulk(edges: EpisodicEdge[]): Promise<EpisodicEdge[]> {
+    const driver = getDriver(this.driverProvider);
     if (edges.length === 0) return [];
 
     for (const edge of edges) {
       validateGroupId(edge.group_id);
     }
 
-    const ops = this.ops ?? resolveEpisodicEdgeOps(this.driver);
+    const ops = this.ops ?? resolveEpisodicEdgeOps(driver);
     if (ops) {
-      await ops.saveBulk(this.driver, edges);
+      await ops.saveBulk(driver, edges);
       return edges;
     }
 
@@ -308,12 +326,13 @@ export class EpisodicEdgeNamespace {
   }
 
   async getByUuid(uuid: string): Promise<EpisodicEdge> {
-    const ops = this.ops ?? resolveEpisodicEdgeOps(this.driver);
+    const driver = getDriver(this.driverProvider);
+    const ops = this.ops ?? resolveEpisodicEdgeOps(driver);
     if (ops) {
-      return ops.getByUuid(this.driver, uuid);
+      return ops.getByUuid(driver, uuid);
     }
 
-    const result = await this.driver.executeQuery<RecordLike>(
+    const result = await driver.executeQuery<RecordLike>(
       `
         MATCH (episode:Episodic)-[e:MENTIONS {uuid: $uuid}]->(entity:Entity)
         RETURN
@@ -335,14 +354,15 @@ export class EpisodicEdgeNamespace {
   }
 
   async getByUuids(uuids: string[]): Promise<EpisodicEdge[]> {
+    const driver = getDriver(this.driverProvider);
     if (uuids.length === 0) return [];
 
-    const ops = this.ops ?? resolveEpisodicEdgeOps(this.driver);
+    const ops = this.ops ?? resolveEpisodicEdgeOps(driver);
     if (ops) {
-      return ops.getByUuids(this.driver, uuids);
+      return ops.getByUuids(driver, uuids);
     }
 
-    const result = await this.driver.executeQuery<RecordLike>(
+    const result = await driver.executeQuery<RecordLike>(
       `
         MATCH (episode:Episodic)-[e:MENTIONS]->(entity:Entity)
         WHERE e.uuid IN $uuids
@@ -360,15 +380,16 @@ export class EpisodicEdgeNamespace {
   }
 
   async deleteByUuids(uuids: string[]): Promise<void> {
+    const driver = getDriver(this.driverProvider);
     if (uuids.length === 0) return;
 
-    const ops = this.ops ?? resolveEpisodicEdgeOps(this.driver);
+    const ops = this.ops ?? resolveEpisodicEdgeOps(driver);
     if (ops) {
-      await ops.deleteByUuids(this.driver, uuids);
+      await ops.deleteByUuids(driver, uuids);
       return;
     }
 
-    await this.driver.executeQuery(
+    await driver.executeQuery(
       `
         MATCH ()-[e:MENTIONS]->()
         WHERE e.uuid IN $uuids
@@ -381,15 +402,16 @@ export class EpisodicEdgeNamespace {
   }
 
   async deleteByGroupId(groupId: string): Promise<void> {
+    const driver = getDriver(this.driverProvider);
     validateGroupId(groupId);
 
-    const ops = this.ops ?? resolveEpisodicEdgeOps(this.driver);
+    const ops = this.ops ?? resolveEpisodicEdgeOps(driver);
     if (ops) {
-      await ops.deleteByGroupId(this.driver, groupId);
+      await ops.deleteByGroupId(driver, groupId);
       return;
     }
 
-    await this.driver.executeQuery(
+    await driver.executeQuery(
       `
         MATCH ()-[e:MENTIONS]->()
         WHERE e.group_id = $group_id
@@ -418,15 +440,12 @@ export interface EdgeNamespaceApi {
 }
 
 export function createEdgeNamespace(
-  driver: GraphDriver,
+  driver: DriverProvider,
   embedder?: EmbedderClient | null
 ): EdgeNamespaceApi {
-  const ops = resolveEntityEdgeOps(driver);
-  const episodicOps = resolveEpisodicEdgeOps(driver);
-
   return {
-    entity: new EntityEdgeNamespace(driver, embedder, ops),
-    episodic: new EpisodicEdgeNamespace(driver, episodicOps)
+    entity: new EntityEdgeNamespace(driver, embedder),
+    episodic: new EpisodicEdgeNamespace(driver)
   };
 }
 
@@ -509,6 +528,18 @@ export function mapEntityEdge(record: RecordLike): EntityEdge {
     }
   }
 
+  const rawAttributes = getRecordValue(record, 'attributes');
+  let attributes: Record<string, unknown> | undefined;
+  if (typeof rawAttributes === 'string') {
+    try {
+      attributes = JSON.parse(rawAttributes) as Record<string, unknown>;
+    } catch {
+      attributes = undefined;
+    }
+  } else if (rawAttributes && typeof rawAttributes === 'object' && !Array.isArray(rawAttributes)) {
+    attributes = rawAttributes as Record<string, unknown>;
+  }
+
   return {
     uuid: getRecordValue<string>(record, 'uuid') ?? '',
     group_id: getRecordValue<string>(record, 'group_id') ?? '',
@@ -522,6 +553,9 @@ export function mapEntityEdge(record: RecordLike): EntityEdge {
     expired_at: parseDateValue(getRecordValue(record, 'expired_at')),
     valid_at: parseDateValue(getRecordValue(record, 'valid_at')),
     invalid_at: parseDateValue(getRecordValue(record, 'invalid_at')),
+    ...(attributes ? { attributes } : {}),
+    deprecation_reason: getRecordValue<string | null>(record, 'deprecation_reason') ?? null,
+    superseded_by: getRecordValue<string | null>(record, 'superseded_by') ?? null,
     confidence,
     epistemic_status: getRecordValue<EpistemicStatus | null>(record, 'epistemic_status') ?? null,
     supported_by: getRecordValue<string[] | null>(record, 'supported_by') ?? null,

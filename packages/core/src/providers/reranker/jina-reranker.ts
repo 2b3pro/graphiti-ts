@@ -25,7 +25,7 @@ export interface JinaRerankerOptions {
 export class JinaRerankerClient implements CrossEncoderClient {
   private readonly apiKey: string;
   private readonly model: string;
-  private readonly topN?: number;
+  private readonly topN: number | undefined;
 
   constructor(options: JinaRerankerOptions = {}) {
     const apiKey = options.apiKey ?? process.env.JINA_API_KEY;

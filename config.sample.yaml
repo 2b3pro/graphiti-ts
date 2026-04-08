@@ -1,4 +1,4 @@
-# GraphMemory Configuration (Sample)
+# Graphiti Configuration (Sample)
 # Copy to config.yaml and adjust values for your environment.
 # Read by config.ts at module load time. Changes take effect on next client creation.
 #
@@ -202,6 +202,34 @@ chunking:
 
 # ---------------------------------------------------------------------------
 # Graphiti Client Options
+# These settings are intended for consumers that map YAML into `Graphiti({ config })`.
 # ---------------------------------------------------------------------------
 client:
   store_raw_episode_content: true
+
+# ---------------------------------------------------------------------------
+# Graphiti Runtime Policy Defaults (optional)
+# Maps cleanly to `new Graphiti({ config: ... })`.
+# ---------------------------------------------------------------------------
+graphiti:
+  extraction:
+    default_instructions_by_episode_source:
+      document: "Focus on methods, findings, and named concepts. Ignore bibliography noise."
+  community:
+    detection_strategy: "auto"
+    max_members_per_summary: 30
+    batch_size: 40
+  bulk_ingest:
+    prefer_batch_embeddings: true
+  lifecycle:
+    deprecation_gate:
+      weights:
+        contradiction_strength: 3
+        source_authority: 2
+        corroboration_count: 2
+      thresholds:
+        ignore: 7
+        dispute: 17
+        deprecate: 28
+        replace: 35
+      evidence_resistance_threshold: 0.8

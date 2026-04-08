@@ -54,7 +54,7 @@ CONDITIONAL EDGE RULES:
 - If a fact is only true under certain conditions ("if X", "when X", "requires X", "unless X", "only during X"), extract the condition.
 - Conditions reference entities from the ENTITIES list. If the condition entity is not in the list, omit the condition.
 - Non-conditional facts should have conditions: null.
-
+${context.custom_extraction_instructions ? `\nADDITIONAL INSTRUCTIONS:\n${context.custom_extraction_instructions}` : ''}
 Respond with JSON: {"edges": [{"source_entity_name": "...", "target_entity_name": "...", "relation_type": "...", "fact": "...", "valid_at": "..." or null, "invalid_at": "..." or null, "conditions": [{"entity_name": "...", "required_state": "active" | "inactive", "relationship": "requires" | "blocked_by"}] or null}, ...]}`
     }
   ];

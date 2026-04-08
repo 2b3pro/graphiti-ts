@@ -30,6 +30,8 @@ This port tracks the upstream provider coverage (OpenAI, Anthropic, Gemini, Groq
 
 Removed from the Python original: Kuzu and Neptune graph backends (this port supports Neo4j and FalkorDB only).
 
+These additions are non-breaking: they extend `EntityEdge`, add optional APIs such as `searchAsOf()`, `deprecateEdge()`, and `deprecateEdges()`, and preserve existing ingestion method signatures.
+
 ## Why Graphiti
 
 - **Dynamic memory for agents** — Continuously ingest conversations, documents, and events into a structured knowledge graph that agents can query in real time
@@ -73,6 +75,48 @@ const results = await graphiti.search('What does Alice prefer?');
 console.log(results.nodes); // Entities: Alice, Bob
 console.log(results.edges); // Relationships: Alice -> prefers -> morning standups
 ```
+
+## Document Ingestion
+
+`EpisodeTypes.document` is an additive source type for longer-form material such as papers, reports, transcripts, and imported notes. It follows the `text` extraction path, but makes document intent explicit and works with `custom_extraction_instructions`.
+
+```typescript
+import { EpisodeTypes, Graphiti } from '@graphiti/core';
+
+const graphiti = new Graphiti({
+  driver,
+  config: {
+    extraction: {
+      default_instructions_by_episode_source: {
+        document: 'Focus on theoretical concepts, methods, and findings. Ignore bibliography noise.'
+      }
+    }
+  }
+});
+
+await graphiti.ingestEpisode({
+  episode: {
+    uuid: crypto.randomUUID(),
+    name: 'paper-graph-memory',
+    group_id: 'research',
+    labels: ['Episodic'],
+    created_at: new Date(),
+    source: EpisodeTypes.document,
+    source_description: 'SSRN import',
+    content: 'Graph memory systems maintain entities, facts, and temporal updates...',
+    valid_at: new Date(),
+    entity_edges: []
+  },
+  extraction_instructions:
+    'Focus on citations of empirical results and suppress appendix material.'
+});
+```
+
+You can also set deployment-level defaults through `Graphiti({ config })` for:
+- default extraction instructions by episode source
+- community detection strategy (`auto`, `gds`, `label_propagation`)
+- bulk embedding batching preference
+- deprecation gate thresholds and weights
 
 ## Features
 
@@ -213,6 +257,44 @@ cp config.sample.yaml config.yaml
 ```
 
 See [`config.sample.yaml`](config.sample.yaml) for all available settings including LLM fallback chains, embedding providers, reranker configuration, search defaults, and quality gates.
+
+For library consumers constructing `Graphiti` directly, the core also supports policy-level runtime config:
+
+```typescript
+const graphiti = new Graphiti({
+  driver,
+  config: {
+    extraction: {
+      default_instructions_by_episode_source: {
+        document: 'Prioritize methods, findings, and named concepts.'
+      }
+    },
+    community: {
+      detection_strategy: 'auto',
+      batch_size: 40
+    },
+    bulk_ingest: {
+      prefer_batch_embeddings: true
+    },
+    lifecycle: {
+      deprecation_gate: {
+        weights: {
+          contradiction_strength: 3,
+          source_authority: 2,
+          corroboration_count: 2
+        },
+        thresholds: {
+          ignore: 7,
+          dispute: 17,
+          deprecate: 28,
+          replace: 35
+        },
+        evidence_resistance_threshold: 0.8
+      }
+    }
+  }
+});
+```
 
 ## Environment Variables
 

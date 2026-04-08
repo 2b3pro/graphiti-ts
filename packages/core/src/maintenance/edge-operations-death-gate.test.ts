@@ -33,9 +33,9 @@ describe('resolveEdgeContradictions with death gate', () => {
     const result = resolveEdgeContradictions(resolvedEdge, [existingEdge]);
     // Well-supported fact (evidence weight = 1.0 * 1.0 * 0.95 = 0.95 > 0.8) should be disputed, not invalidated
     if (result.length > 0) {
-      expect(result[0].epistemic_status).toBe('disputed');
+      expect(result[0]?.epistemic_status).toBe('disputed');
       // Disputed edges are NOT invalidated — invalid_at stays as it was (undefined/null)
-      expect(result[0].invalid_at).toBeFalsy();
+      expect(result[0]?.invalid_at).toBeFalsy();
     }
   });
 
@@ -55,8 +55,8 @@ describe('resolveEdgeContradictions with death gate', () => {
     const result = resolveEdgeContradictions(resolvedEdge, [existingEdge]);
     expect(result.length).toBe(1);
     // Low evidence weight claim (0.5 * 1.0 * 0.5 = 0.25 < 0.8) should be invalidated
-    expect(result[0].invalid_at).not.toBeNull();
-    expect(result[0].epistemic_status).toBe('deprecated');
+    expect(result[0]?.invalid_at).not.toBeNull();
+    expect(result[0]?.epistemic_status).toBe('deprecated');
   });
 
   test('empty candidates returns empty', () => {
@@ -85,8 +85,9 @@ describe('resolveEdgeContradictions with death gate', () => {
     });
 
     const result = resolveEdgeContradictions(resolvedEdge, [existingEdge]);
-    if (result.length > 0 && result[0].epistemic_status === 'disputed') {
-      expect(result[0].disputed_by).toContain('new-edge');
+    const first = result[0];
+    if (first && first.epistemic_status === 'disputed') {
+      expect(first.disputed_by).toContain('new-edge');
     }
   });
 

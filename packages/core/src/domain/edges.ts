@@ -15,6 +15,8 @@ export interface EntityEdge extends Edge {
   invalid_at?: Date | null;
   expired_at?: Date | null;
   attributes?: Record<string, unknown>;
+  deprecation_reason?: string | null;
+  superseded_by?: string | null;
 
   /**
    * Confidence band: [low, mid, high] expressing uncertainty range.

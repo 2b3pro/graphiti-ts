@@ -26,7 +26,11 @@ import { normalizeStringExact } from '../dedup/dedup-helpers';
 import { semaphoreGather } from '../utils/concurrency';
 import type { EntityTypeDefinition } from './node-operations';
 import { computeEvidenceWeight } from '../domain/epistemic';
-import { resolveContradiction as resolveContradictionGate, type ContradictionScores } from '../domain/deprecation-gate';
+import {
+  resolveContradiction as resolveContradictionGate,
+  type ContradictionScores,
+  type DeprecationGateConfig
+} from '../domain/deprecation-gate';
 
 /** Build a GenerateResponseContext from GraphitiClients. */
 function buildEdgeContext(clients: GraphitiClients): GenerateResponseContext {
@@ -211,7 +215,8 @@ export async function resolveExtractedEdges(
   episode: EpisodicNode,
   entities: EntityNode[],
   edgeTypes: Record<string, EdgeTypeDefinition>,
-  edgeTypeMap: Record<string, string[]>
+  edgeTypeMap: Record<string, string[]>,
+  deprecationGateConfig?: DeprecationGateConfig
 ): Promise<[EntityEdge[], EntityEdge[], EntityEdge[]]> {
   if (extractedEdges.length === 0) {
     return [[], [], []];
@@ -302,7 +307,8 @@ export async function resolveExtractedEdges(
           edgeInvalidationCandidates[i]!,
           episode,
           edgeTypes,
-          edgeCtx
+          edgeCtx,
+          deprecationGateConfig
         )
     )
   );
@@ -342,7 +348,8 @@ export async function resolveExtractedEdge(
   existingEdges: EntityEdge[],
   episode: EpisodicNode,
   edgeTypeCandidates?: Record<string, EdgeTypeDefinition> | null,
-  llmContext?: GenerateResponseContext
+  llmContext?: GenerateResponseContext,
+  deprecationGateConfig?: DeprecationGateConfig
 ): Promise<[EntityEdge, EntityEdge[]]> {
   // No related or existing edges — extract attributes if applicable and return
   if (relatedEdges.length === 0 && existingEdges.length === 0) {
@@ -483,7 +490,11 @@ export async function resolveExtractedEdge(
   }
 
   // Determine contradictions
-  const invalidatedEdges = resolveEdgeContradictions(resolvedEdge, invalidationCandidates);
+  const invalidatedEdges = resolveEdgeContradictions(
+    resolvedEdge,
+    invalidationCandidates,
+    deprecationGateConfig
+  );
 
   // Merge pre-filter invalidations with LLM-detected invalidations
   return [resolvedEdge, [...preFilterInvalidated, ...invalidatedEdges]];
@@ -491,7 +502,8 @@ export async function resolveExtractedEdge(
 
 export function resolveEdgeContradictions(
   resolvedEdge: EntityEdge,
-  invalidationCandidates: EntityEdge[]
+  invalidationCandidates: EntityEdge[],
+  deprecationGateConfig?: DeprecationGateConfig
 ): EntityEdge[] {
   if (invalidationCandidates.length === 0) return [];
 
@@ -527,7 +539,13 @@ export function resolveEdgeContradictions(
         corroboration_count: heuristicCorroborationCount(resolvedEdge),
       };
 
-      const resolution = resolveContradictionGate(edge, resolvedEdge, scores, existingWeight);
+      const resolution = resolveContradictionGate(
+        edge,
+        resolvedEdge,
+        scores,
+        existingWeight,
+        deprecationGateConfig
+      );
 
       if (resolution.action === 'keep_existing') continue;
 
