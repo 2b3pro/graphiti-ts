@@ -206,8 +206,11 @@ export async function extractNodesAndEdgesBulk(
   excludedEntityTypes?: string[] | null,
   edgeTypes?: Record<string, EdgeTypeDefinition> | null,
   customExtractionInstructions?: string | null,
-  resolveCustomExtractionInstructions?: ((episode: EpisodicNode) => string | null) | null
+  resolveCustomExtractionInstructions?: ((episode: EpisodicNode) => string | null) | null,
+  maxConcurrency?: number | null
 ): Promise<[EntityNode[][], EntityEdge[][]]> {
+  const concurrency = maxConcurrency ?? undefined;
+
   // Extract nodes for each episode
   const extractedNodesBulk: EntityNode[][] = await semaphoreGather(
     episodeTuples.map(
@@ -223,7 +226,8 @@ export async function extractNodesAndEdgesBulk(
               resolveCustomExtractionInstructions?.(episode) ??
               null
           )
-    )
+    ),
+    concurrency
   );
 
   // Extract edges for each episode
@@ -243,7 +247,8 @@ export async function extractNodesAndEdgesBulk(
               resolveCustomExtractionInstructions?.(episode) ??
               null
           )
-    )
+    ),
+    concurrency
   );
 
   return [extractedNodesBulk, extractedEdgesBulk];
@@ -258,8 +263,11 @@ export async function dedupeNodesBulk(
   extractedNodes: EntityNode[][],
   episodeTuples: Array<[EpisodicNode, EpisodicNode[]]>,
   entityTypes?: Record<string, EntityTypeDefinition> | null,
-  resolutionConfig?: GraphitiResolutionConfig
+  resolutionConfig?: GraphitiResolutionConfig,
+  maxConcurrency?: number | null
 ): Promise<[Record<string, EntityNode[]>, Record<string, string>]> {
+  const concurrency = maxConcurrency ?? undefined;
+
   // First pass: resolve each episode's nodes against the graph
   const firstPassResults = await semaphoreGather(
     extractedNodes.map(
@@ -274,7 +282,8 @@ export async function dedupeNodesBulk(
             undefined,
             resolutionConfig
           )
-    )
+    ),
+    concurrency
   );
 
   const episodeResolutions: Array<[string, EntityNode[]]> = [];
@@ -380,6 +389,7 @@ export async function dedupeEdgesBulk(
     deprecation_gate_config?: DeprecationGateConfig;
     prefer_batch_embeddings?: boolean;
     resolution_config?: GraphitiResolutionConfig;
+    maxConcurrency?: number | null;
   } = {}
 ): Promise<Record<string, EntityEdge[]>> {
   const embedder = clients.embedder;
@@ -403,7 +413,8 @@ export async function dedupeEdgesBulk(
       await semaphoreGather(
         pendingEdges.map((edge) => async () => {
           edge.fact_embedding = await embedder.create([edge.fact.replaceAll('\n', ' ')]);
-        })
+        }),
+        options.maxConcurrency ?? undefined
       );
     }
   }

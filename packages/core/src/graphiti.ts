@@ -872,7 +872,8 @@ export class Graphiti {
         input.excluded_entity_types,
         input.edge_types,
         input.custom_extraction_instructions,
-        (episode) => this.getDefaultExtractionInstructions(episode.source)
+        (episode) => this.getDefaultExtractionInstructions(episode.source),
+        this.max_coroutines
       );
 
       // Cross-episode node dedup
@@ -881,7 +882,8 @@ export class Graphiti {
         extractedNodesBulk,
         episodeTuples,
         input.entity_types,
-        this.config.resolution
+        this.config.resolution,
+        this.max_coroutines
       );
 
       // Build episodic edges
@@ -900,16 +902,14 @@ export class Graphiti {
         remappedEdgesBulk,
         episodeTuples,
         input.edge_types ?? {},
-        this.config.lifecycle.deprecation_gate === undefined &&
-        this.config.bulk_ingest.prefer_batch_embeddings === undefined
-          ? {}
-          : {
-              ...(this.config.lifecycle.deprecation_gate === undefined
-                ? {}
-                : { deprecation_gate_config: this.config.lifecycle.deprecation_gate }),
-              resolution_config: this.config.resolution,
-              ...this.getBulkEmbeddingOptions()
-            }
+        {
+          ...(this.config.lifecycle.deprecation_gate === undefined
+            ? {}
+            : { deprecation_gate_config: this.config.lifecycle.deprecation_gate }),
+          resolution_config: this.config.resolution,
+          ...this.getBulkEmbeddingOptions(),
+          maxConcurrency: this.max_coroutines,
+        }
       );
 
       // Resolve nodes and edges against existing graph
