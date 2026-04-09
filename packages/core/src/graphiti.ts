@@ -261,7 +261,8 @@ export class Graphiti {
             cross_encoder: this.cross_encoder,
             tracer: this.tracer,
             tokenTracker: this.tokenTracker,
-            cache: this.llmCache
+            cache: this.llmCache,
+            modelRouting: this.config.model_routing
           }
         : null;
 

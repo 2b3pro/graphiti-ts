@@ -8,6 +8,8 @@
 import type { GenerateResponseOptions, LLMClient } from '../contracts';
 import type { Message } from '../prompts/types';
 import { getExtractionLanguageInstruction } from './language';
+import type { GraphitiModelRoutingConfig } from '../config';
+import { resolveModelForPrompt } from '../config';
 import type { TokenUsageTracker } from './token-tracker';
 import type { LLMCache } from './cache';
 import { createHash } from 'crypto';
@@ -40,6 +42,8 @@ export interface GenerateResponseContext {
   tokenTracker?: TokenUsageTracker | null;
   /** LLM response cache for avoiding duplicate calls. */
   cache?: LLMCache | null;
+  /** Model routing config from GraphitiConfig — enables per-prompt model selection. */
+  modelRouting?: GraphitiModelRoutingConfig | null;
 }
 
 /**
@@ -113,10 +117,10 @@ export async function generateResponse(
   const inputText = processedMessages.map((m) => m.content).join('');
   const inputTokenEstimate = estimateTokens(inputText);
 
-  // Select model: use small_model when model_size is 'small' and small_model is configured
-  const modelOverride = options.model_size === 'small' && client.small_model
-    ? client.small_model
-    : null;
+  // Select model: routing config → model_size fallback → client.model default
+  const routedModel = resolveModelForPrompt(context.modelRouting ?? undefined, options.prompt_name ?? undefined);
+  const modelOverride = routedModel
+    ?? (options.model_size === 'small' && client.small_model ? client.small_model : null);
 
   // Generate text response
   const responseText = await client.generateText(processedMessages, { model_override: modelOverride });

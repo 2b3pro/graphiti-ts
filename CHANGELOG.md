@@ -12,7 +12,8 @@
 ### LLM client improvements
 
 - **Rate limit retry with backoff:** `OpenAIGenericClient` now retries 429/rate-limit errors with exponential backoff (3s base, up to 4 retries) instead of failing immediately. Fixes gateway overload causing total ingestion failure.
-- **`small_model` wiring:** `generateText()` accepts optional `model_override` parameter. `generateResponse()` passes `client.small_model` when `model_size: 'small'` is requested. Resolution and dedup calls now route to the configured small model (e.g., haiku) instead of always using the primary model (e.g., sonnet).
+- **`small_model` wiring:** `generateText()` accepts optional `model_override` parameter. `generateResponse()` passes `client.small_model` when `model_size: 'small'` is requested.
+- **Per-prompt model routing (`model_routing` config):** Maps prompt names (or `prefix.*` globs) to specific model identifiers. Enables fine-grained control: extraction on sonnet, resolution on sonnet, attribute hydration on haiku — all configurable per deployment. Resolution order: exact prompt name → prefix match → `model_size` fallback → `client.model` default. See `GraphitiModelRoutingConfig` and `resolveModelForPrompt()` in `config.ts`.
 
 ### Future consideration
 

@@ -31,12 +31,33 @@ export interface GraphitiLifecycleConfig {
   deprecation_gate?: DeprecationGateConfig;
 }
 
+/**
+ * Per-prompt model routing. Keys are prompt names (e.g., 'dedupe_nodes.nodes')
+ * or glob-style prefixes (e.g., 'extract_nodes.*'). Values are model identifiers
+ * passed as model_override to generateText().
+ *
+ * Resolution order: exact prompt_name match → prefix match → model_size fallback → client.model.
+ *
+ * Known prompt names:
+ *   extract_nodes.text / extract_nodes.message / extract_nodes.json  — entity extraction
+ *   extract_edges.edge                                                — relationship extraction
+ *   dedupe_nodes.nodes                                                — entity dedup/resolution
+ *   dedupe_edges.resolve_edge                                         — edge contradiction/dedup
+ *   extract_nodes.extract_attributes                                  — node attribute hydration
+ *   extract_nodes.extract_summaries_batch                             — batch node summarization
+ *   extract_edges.extract_attributes                                  — edge field extraction
+ */
+export interface GraphitiModelRoutingConfig {
+  [promptNameOrPrefix: string]: string;
+}
+
 export interface GraphitiConfig {
   extraction: GraphitiExtractionConfig;
   community: GraphitiCommunityConfig;
   bulk_ingest: GraphitiBulkIngestConfig;
   resolution: GraphitiResolutionConfig;
   lifecycle: GraphitiLifecycleConfig;
+  model_routing: GraphitiModelRoutingConfig;
 }
 
 export interface GraphitiConfigOverrides {
@@ -45,6 +66,36 @@ export interface GraphitiConfigOverrides {
   bulk_ingest?: GraphitiBulkIngestConfig;
   resolution?: GraphitiResolutionConfig;
   lifecycle?: GraphitiLifecycleConfig;
+  model_routing?: GraphitiModelRoutingConfig;
+}
+
+/**
+ * Resolve the model to use for a given prompt name using the routing config.
+ * Resolution order: exact match → prefix match (longest wins) → null (use caller default).
+ */
+export function resolveModelForPrompt(
+  routing: GraphitiModelRoutingConfig | undefined,
+  promptName: string | null | undefined,
+): string | null {
+  if (!routing || !promptName) return null;
+
+  // Exact match
+  if (routing[promptName]) return routing[promptName];
+
+  // Prefix match — find longest matching prefix (e.g., 'extract_nodes.*' matches 'extract_nodes.text')
+  let bestMatch: string | null = null;
+  let bestLen = 0;
+  for (const key of Object.keys(routing)) {
+    if (key.endsWith('.*')) {
+      const prefix = key.slice(0, -2);
+      if (promptName.startsWith(prefix) && prefix.length > bestLen) {
+        bestMatch = routing[key]!;
+        bestLen = prefix.length;
+      }
+    }
+  }
+
+  return bestMatch;
 }
 
 export const DEFAULT_GRAPHITI_CONFIG: GraphitiConfig = {
@@ -64,7 +115,8 @@ export const DEFAULT_GRAPHITI_CONFIG: GraphitiConfig = {
     margin_threshold: 0.05,
     log_decisions: false
   },
-  lifecycle: {}
+  lifecycle: {},
+  model_routing: {}
 };
 
 /**
@@ -120,6 +172,10 @@ export function createGraphitiConfig(
     lifecycle: {
       ...DEFAULT_GRAPHITI_CONFIG.lifecycle,
       ...overrides.lifecycle
+    },
+    model_routing: {
+      ...DEFAULT_GRAPHITI_CONFIG.model_routing,
+      ...overrides.model_routing
     }
   };
 }

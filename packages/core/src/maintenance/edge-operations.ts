@@ -39,7 +39,8 @@ import {
 function buildEdgeContext(clients: GraphitiClients): GenerateResponseContext {
   return {
     tokenTracker: clients.tokenTracker ?? null,
-    cache: clients.cache ?? null
+    cache: clients.cache ?? null,
+    modelRouting: clients.modelRouting ?? null,
   };
 }
 

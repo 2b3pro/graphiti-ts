@@ -100,6 +100,8 @@ export interface GraphitiClients {
   tokenTracker?: import('./llm/token-tracker').TokenUsageTracker | null;
   /** LLM response cache for deduplicating calls. */
   cache?: import('./llm/cache').LLMCache | null;
+  /** Per-prompt model routing config from GraphitiConfig. */
+  modelRouting?: import('./config').GraphitiModelRoutingConfig | null;
 }
 
 export interface QueryOptions {
