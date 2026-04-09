@@ -4,6 +4,9 @@
   "workspaces": ["packages/*"],
   "scripts": {
     "build": "bun run --filter '*' build",
+    "check:no-pai-leaks": "bash scripts/check-no-pai-leaks.sh",
+    "verify": "bun run check:no-pai-leaks && bun run build && bun run typecheck && bun run test",
+    "release:cut": "bash scripts/release-cut.sh",
     "test": "bun run --filter '*' test",
     "lint": "biome check .",
     "format": "biome format --write .",

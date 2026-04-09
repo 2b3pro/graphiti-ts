@@ -13,6 +13,7 @@
 - Add typed `Graphiti` policy config for extraction defaults, community strategy, bulk embedding batching, and deprecation-gate tuning.
 - Keep lifecycle additions additive and backward-compatible:
   `deprecateEdge()`, `deprecateEdges()`, `searchAsOf()`, confidence, epistemic fields, conditions, and interpretations.
+- Compatibility note: consumers that strictly decode serialized `EntityEdge` payloads must tolerate newly added optional lifecycle and reasoning fields.
 
 ## v0.1.0
 

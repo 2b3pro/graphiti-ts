@@ -32,6 +32,18 @@ Removed from the Python original: Kuzu and Neptune graph backends (this port sup
 
 These additions are non-breaking: they extend `EntityEdge`, add optional APIs such as `searchAsOf()`, `deprecateEdge()`, and `deprecateEdges()`, and preserve existing ingestion method signatures.
 
+Compatibility note: the lifecycle and reasoning fields added to `EntityEdge` are additive. No schema migration is required, but consumers that serialize and strictly decode edge payloads should tolerate new optional fields such as `conditions`, `interpretations`, confidence bands, epistemic metadata, and deprecation metadata.
+
+## Release Workflow
+
+This repo treats `dist/` as a release artifact rather than a source-of-truth during normal iteration.
+
+- Run `bun run verify` for the standard release gates.
+- Run `bun run release:cut -- v0.2.0` to rebuild `dist/`, rerun verification, and ensure the worktree is clean afterward.
+- Run `bun run release:cut -- v0.2.0 --tag` only when you intend to create the release tag from that exact commit.
+
+The release-cut script also enforces the repository boundary check that fails if PAI-specific paths leak into the reusable `graphiti-ts` surface.
+
 ## Why Graphiti
 
 - **Dynamic memory for agents** — Continuously ingest conversations, documents, and events into a structured knowledge graph that agents can query in real time
