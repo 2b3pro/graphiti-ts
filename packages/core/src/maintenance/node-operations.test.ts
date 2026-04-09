@@ -5,7 +5,13 @@ import type { GraphitiClients, LLMClient, EmbedderClient, GraphDriver } from '..
 import { EpisodeTypes, type EntityNode, type EpisodicNode } from '../domain/nodes';
 import type { Message } from '../prompts/types';
 
-import { buildEntityTypesContext, extractNodes, resolveExtractedNodes, extractAttributesFromNodes } from './node-operations';
+import {
+  buildEntityTypesContext,
+  extractNodes,
+  resolveExtractedNodes,
+  extractAttributesFromNodes,
+  shouldSkipNodeResolution
+} from './node-operations';
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -269,6 +275,20 @@ describe('extractNodes', () => {
 // ---------------------------------------------------------------------------
 
 describe('resolveExtractedNodes', () => {
+  test('pre-filter helper skips only low-score weak-margin candidates', () => {
+    expect(shouldSkipNodeResolution([0.62, 0.6], {
+      pre_filter_enabled: true,
+      node_similarity_threshold: 0.7,
+      margin_threshold: 0.05
+    })).toBe(true);
+
+    expect(shouldSkipNodeResolution([0.62, 0.4], {
+      pre_filter_enabled: true,
+      node_similarity_threshold: 0.7,
+      margin_threshold: 0.05
+    })).toBe(false);
+  });
+
   test('returns empty arrays for empty input', async () => {
     const clients = makeMockClients([]);
     const [resolved, uuidMap, pairs] = await resolveExtractedNodes(clients, []);

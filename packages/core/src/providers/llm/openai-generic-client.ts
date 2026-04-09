@@ -17,7 +17,7 @@ import { generateResponse, type GenerateResponseContext } from '../../llm/genera
 import { EmptyResponseError, RateLimitError, RefusalError } from '../errors';
 
 const DEFAULT_MODEL = 'gpt-4.1-mini';
-const MAX_RETRIES = 2;
+const MAX_RETRIES = 4;
 const DEFAULT_MAX_TOKENS = 16384;
 
 export interface OpenAIGenericClientOptions {
@@ -53,13 +53,14 @@ export class OpenAIGenericClient implements LLMClient {
     this.tracer = tracer;
   }
 
-  async generateText(messages: Message[]): Promise<string> {
+  async generateText(messages: Message[], options?: { model_override?: string | null }): Promise<string> {
     const scope = this.tracer.startSpan('llm.generate');
+    const effectiveModel = options?.model_override ?? this.model;
 
     try {
       scope.span.addAttributes({
         'llm.provider': 'openai-generic',
-        'llm.model': this.model,
+        'llm.model': effectiveModel,
         'llm.max_tokens': this.maxTokens
       });
 
@@ -68,7 +69,7 @@ export class OpenAIGenericClient implements LLMClient {
       for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
         try {
           const response = await this.client.chat.completions.create({
-            model: this.model,
+            model: effectiveModel,
             messages: messages.map((m) => ({
               role: m.role as 'system' | 'user' | 'assistant',
               content: m.content
@@ -98,18 +99,17 @@ export class OpenAIGenericClient implements LLMClient {
           scope.span.setStatus('ok');
           return content;
         } catch (error) {
-          if (error instanceof OpenAI.RateLimitError) {
-            throw new RateLimitError(error.message);
-          }
-
-          if (error instanceof RefusalError || error instanceof RateLimitError) {
+          if (error instanceof RefusalError) {
             throw error;
           }
 
           lastError = error;
 
           if (attempt < MAX_RETRIES) {
-            const waitMs = Math.pow(2, attempt) * 1000;
+            // Longer backoff for rate limits (gateway overload), shorter for other transient errors
+            const isRateLimit = error instanceof OpenAI.RateLimitError || error instanceof RateLimitError;
+            const baseMs = isRateLimit ? 3000 : 1000;
+            const waitMs = baseMs * Math.pow(2, attempt);
             await new Promise((resolve) => setTimeout(resolve, waitMs));
           }
         }

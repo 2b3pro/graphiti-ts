@@ -61,8 +61,9 @@ export interface LLMClient {
   /**
    * Low-level text generation — returns raw string.
    * Callers must parse JSON themselves.
+   * @param options.model_override - Use a specific model for this call (e.g., small_model).
    */
-  generateText(messages: Message[]): Promise<string>;
+  generateText(messages: Message[], options?: { model_override?: string | null }): Promise<string>;
   /**
    * Structured response generation — port of Python's generate_response().
    * Appends JSON schema to prompt, adds language instructions, cleans input,

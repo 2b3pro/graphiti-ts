@@ -12,6 +12,9 @@
 import { utcNow } from '@graphiti/shared';
 
 import type { GraphitiClients, LLMClient, EmbedderClient, GenerateResponseOptions } from '../contracts';
+import type { GraphitiResolutionConfig } from '../config';
+import { logResolutionDecision } from '../config';
+import type { Tracer } from '../tracing';
 import { ENTITY_EDGE_RETURN_FIELDS } from '../driver/cypher-fields';
 import { detectNegation } from './negation';
 import { generateResponse as defaultGenerateResponse, type GenerateResponseContext } from '../llm/generate-response';
@@ -216,7 +219,8 @@ export async function resolveExtractedEdges(
   entities: EntityNode[],
   edgeTypes: Record<string, EdgeTypeDefinition>,
   edgeTypeMap: Record<string, string[]>,
-  deprecationGateConfig?: DeprecationGateConfig
+  deprecationGateConfig?: DeprecationGateConfig,
+  resolutionConfig?: GraphitiResolutionConfig
 ): Promise<[EntityEdge[], EntityEdge[], EntityEdge[]]> {
   if (extractedEdges.length === 0) {
     return [[], [], []];
@@ -264,6 +268,7 @@ export async function resolveExtractedEdges(
   );
 
   const relatedEdgesLists = relatedEdgesResults.map((r) => r.edges);
+  const relatedEdgeScoresLists = relatedEdgesResults.map((r) => r.edge_reranker_scores);
 
   // Search for invalidation candidates
   const invalidationResults = await semaphoreGather(
@@ -304,11 +309,14 @@ export async function resolveExtractedEdges(
           llmClient,
           extractedEdge,
           relatedEdgesLists[i]!,
+          relatedEdgeScoresLists[i]!,
           edgeInvalidationCandidates[i]!,
           episode,
           edgeTypes,
           edgeCtx,
-          deprecationGateConfig
+          deprecationGateConfig,
+          resolutionConfig,
+          clients.tracer
         )
     )
   );
@@ -345,159 +353,260 @@ export async function resolveExtractedEdge(
   llmClient: LLMClient,
   extractedEdge: EntityEdge,
   relatedEdges: EntityEdge[],
+  relatedEdgeScores: number[],
   existingEdges: EntityEdge[],
   episode: EpisodicNode,
   edgeTypeCandidates?: Record<string, EdgeTypeDefinition> | null,
   llmContext?: GenerateResponseContext,
-  deprecationGateConfig?: DeprecationGateConfig
+  deprecationGateConfig?: DeprecationGateConfig,
+  resolutionConfig?: GraphitiResolutionConfig,
+  tracer?: Tracer
 ): Promise<[EntityEdge, EntityEdge[]]> {
-  // No related or existing edges — extract attributes if applicable and return
-  if (relatedEdges.length === 0 && existingEdges.length === 0) {
-    if (edgeTypeCandidates?.[extractedEdge.name]?.fields) {
-      const fields = edgeTypeCandidates[extractedEdge.name]!.fields!;
-      if (Object.keys(fields).length > 0) {
-        const attrs = await extractEdgeAttributes(llmClient, extractedEdge, episode, fields, llmContext);
-        extractedEdge.attributes = attrs;
-      }
-    }
-    return [extractedEdge, []];
-  }
+  const scope = tracer?.startSpan('resolution.edge') ?? null;
 
-  // Fast path: exact match on fact text and endpoints
-  const normalizedFact = normalizeStringExact(extractedEdge.fact);
-  for (const edge of relatedEdges) {
-    if (
-      edge.source_node_uuid === extractedEdge.source_node_uuid &&
-      edge.target_node_uuid === extractedEdge.target_node_uuid &&
-      normalizeStringExact(edge.fact) === normalizedFact
-    ) {
-      const resolved = { ...edge };
-      if (episode && !resolved.episodes?.includes(episode.uuid)) {
-        resolved.episodes = [...(resolved.episodes ?? []), episode.uuid];
-      }
-      return [resolved, []];
-    }
-  }
-
-  // --- Negation pre-filter: skip LLM for obvious contradictions ---
-  const preFilterInvalidated: EntityEdge[] = [];
-  const preFilterSkippedIndices = new Set<number>();
-  const preFilterNow = utcNow();
-
-  for (let i = 0; i < existingEdges.length; i++) {
-    const existing = existingEdges[i]!;
-    // Shared entities = node UUID overlap between new and existing edge
-    const sharedEntities: string[] = [];
-    if (extractedEdge.source_node_uuid === existing.source_node_uuid) sharedEntities.push('source');
-    if (extractedEdge.target_node_uuid === existing.target_node_uuid) sharedEntities.push('target');
-    if (extractedEdge.source_node_uuid === existing.target_node_uuid) sharedEntities.push('source-target');
-    if (extractedEdge.target_node_uuid === existing.source_node_uuid) sharedEntities.push('target-source');
-
-    const signal = detectNegation(extractedEdge.fact, existing.fact, sharedEntities);
-
-    if (signal.confidence === 'high') {
-      // Deterministic invalidation — skip LLM for this pair
-      const invalidated = { ...existing };
-      invalidated.invalid_at = extractedEdge.valid_at ?? preFilterNow;
-      invalidated.expired_at = invalidated.expired_at ?? preFilterNow;
-      preFilterInvalidated.push(invalidated);
-      preFilterSkippedIndices.add(i);
-    }
-    // MEDIUM: leave in existingEdges for LLM to evaluate
-    // NONE: leave in existingEdges, LLM may still find contradictions
-  }
-
-  // Remove pre-filtered edges from the LLM's invalidation candidate batch
-  const filteredExistingEdges = existingEdges.filter((_, i) => !preFilterSkippedIndices.has(i));
-  // --- End negation pre-filter ---
-
-  // LLM resolution
-  const relatedEdgesContext = relatedEdges.map((e, i) => ({ idx: i, fact: e.fact }));
-  const invalidationIdxOffset = relatedEdges.length;
-  const invalidationContext = filteredExistingEdges.map((e, i) => ({
-    idx: invalidationIdxOffset + i,
-    fact: e.fact
-  }));
-
-  const context = {
-    existing_facts: JSON.stringify(relatedEdgesContext),
-    invalidation_candidates: JSON.stringify(invalidationContext),
-    new_fact: extractedEdge.fact
+  const finalize = (
+    resolvedEdge: EntityEdge,
+    invalidatedEdges: EntityEdge[],
+    attributes: Record<string, unknown>
+  ): [EntityEdge, EntityEdge[]] => {
+    scope?.span.addAttributes({
+      'resolution.kind': 'edge',
+      'resolution.related.count': relatedEdges.length,
+      'resolution.invalidation_candidate.count': existingEdges.length,
+      'resolution.prefilter.enabled': resolutionConfig?.pre_filter_enabled ?? false,
+      ...attributes
+    });
+    return [resolvedEdge, invalidatedEdges];
   };
 
-  const llmResponse = await callGenerateResponse(llmClient,
-    promptLibrary.dedupeEdges.resolveEdge(context),
-    {
-      response_model: {
-        type: 'object',
-        properties: {
-          duplicate_facts: { type: 'array' },
-          contradicted_facts: { type: 'array' }
+  try {
+    // No related or existing edges — extract attributes if applicable and return
+    if (relatedEdges.length === 0 && existingEdges.length === 0) {
+      if (edgeTypeCandidates?.[extractedEdge.name]?.fields) {
+        const fields = edgeTypeCandidates[extractedEdge.name]!.fields!;
+        if (Object.keys(fields).length > 0) {
+          const attrs = await extractEdgeAttributes(llmClient, extractedEdge, episode, fields, llmContext);
+          extractedEdge.attributes = attrs;
         }
+      }
+      return finalize(extractedEdge, [], {
+        'resolution.prefilter.invalidated_count': 0,
+        'resolution.prefilter.skipped': false,
+        'resolution.llm.invoked': false
+      });
+    }
+
+    // Fast path: exact match on fact text and endpoints
+    const normalizedFact = normalizeStringExact(extractedEdge.fact);
+    for (const edge of relatedEdges) {
+      if (
+        edge.source_node_uuid === extractedEdge.source_node_uuid &&
+        edge.target_node_uuid === extractedEdge.target_node_uuid &&
+        normalizeStringExact(edge.fact) === normalizedFact
+      ) {
+        const resolved = { ...edge };
+        if (episode && !resolved.episodes?.includes(episode.uuid)) {
+          resolved.episodes = [...(resolved.episodes ?? []), episode.uuid];
+        }
+        return finalize(resolved, [], {
+          'resolution.prefilter.invalidated_count': 0,
+          'resolution.prefilter.skipped': false,
+          'resolution.llm.invoked': false,
+          'resolution.exact_match': true
+        });
+      }
+    }
+
+    // --- Negation pre-filter: skip LLM for obvious contradictions ---
+    const preFilterInvalidated: EntityEdge[] = [];
+    const preFilterSkippedIndices = new Set<number>();
+    const preFilterNow = utcNow();
+
+    for (let i = 0; i < existingEdges.length; i++) {
+      const existing = existingEdges[i]!;
+      // Shared entities = node UUID overlap between new and existing edge
+      const sharedEntities: string[] = [];
+      if (extractedEdge.source_node_uuid === existing.source_node_uuid) sharedEntities.push('source');
+      if (extractedEdge.target_node_uuid === existing.target_node_uuid) sharedEntities.push('target');
+      if (extractedEdge.source_node_uuid === existing.target_node_uuid) sharedEntities.push('source-target');
+      if (extractedEdge.target_node_uuid === existing.source_node_uuid) sharedEntities.push('target-source');
+
+      const signal = detectNegation(extractedEdge.fact, existing.fact, sharedEntities);
+
+      if (signal.confidence === 'high') {
+        // Deterministic invalidation — skip LLM for this pair
+        const invalidated = { ...existing };
+        invalidated.invalid_at = extractedEdge.valid_at ?? preFilterNow;
+        invalidated.expired_at = invalidated.expired_at ?? preFilterNow;
+        preFilterInvalidated.push(invalidated);
+        preFilterSkippedIndices.add(i);
+      }
+      // MEDIUM: leave in existingEdges for LLM to evaluate
+      // NONE: leave in existingEdges, LLM may still find contradictions
+    }
+
+    // Remove pre-filtered edges from the LLM's invalidation candidate batch
+    const filteredExistingEdges = existingEdges.filter((_, i) => !preFilterSkippedIndices.has(i));
+    // --- End negation pre-filter ---
+
+    if (shouldSkipEdgeResolution(relatedEdgeScores, resolutionConfig)) {
+      if (resolutionConfig) {
+        const top1 = relatedEdgeScores[0] ?? null;
+        const top2 = relatedEdgeScores[1] ?? null;
+        logResolutionDecision(resolutionConfig, '[graphiti-ts][resolution][edge]', {
+          fact: extractedEdge.fact,
+          top1_similarity: top1,
+          top2_similarity: top2,
+          margin: top1 !== null && top2 !== null ? top1 - top2 : null,
+          skipped: true,
+        });
+      }
+
+      if (edgeTypeCandidates?.[extractedEdge.name]?.fields) {
+        const fields = edgeTypeCandidates[extractedEdge.name]!.fields!;
+        if (Object.keys(fields).length > 0) {
+          const attrs = await extractEdgeAttributes(llmClient, extractedEdge, episode, fields, llmContext);
+          extractedEdge.attributes = attrs;
+        }
+      } else {
+        extractedEdge.attributes = {};
+      }
+
+      return finalize(extractedEdge, preFilterInvalidated, {
+        'resolution.prefilter.invalidated_count': preFilterInvalidated.length,
+        'resolution.prefilter.skipped': true,
+        'resolution.llm.invoked': false,
+        'resolution.top1_similarity': relatedEdgeScores[0] ?? null,
+        'resolution.top2_similarity': relatedEdgeScores[1] ?? null
+      });
+    }
+
+    // Log non-skipped edge resolution decision
+    if (resolutionConfig) {
+      const top1 = relatedEdgeScores[0] ?? null;
+      const top2 = relatedEdgeScores[1] ?? null;
+      logResolutionDecision(resolutionConfig, '[graphiti-ts][resolution][edge]', {
+        fact: extractedEdge.fact,
+        top1_similarity: top1,
+        top2_similarity: top2,
+        margin: top1 !== null && top2 !== null ? top1 - top2 : null,
+        skipped: false,
+      });
+    }
+
+    // LLM resolution
+    const relatedEdgesContext = relatedEdges.map((e, i) => ({ idx: i, fact: e.fact }));
+    const invalidationIdxOffset = relatedEdges.length;
+    const invalidationContext = filteredExistingEdges.map((e, i) => ({
+      idx: invalidationIdxOffset + i,
+      fact: e.fact
+    }));
+
+    const context = {
+      existing_facts: JSON.stringify(relatedEdgesContext),
+      invalidation_candidates: JSON.stringify(invalidationContext),
+      new_fact: extractedEdge.fact
+    };
+
+    const llmResponse = await callGenerateResponse(llmClient,
+      promptLibrary.dedupeEdges.resolveEdge(context),
+      {
+        response_model: {
+          type: 'object',
+          properties: {
+            duplicate_facts: { type: 'array' },
+            contradicted_facts: { type: 'array' }
+          }
+        },
+        model_size: 'small',
+        prompt_name: 'dedupe_edges.resolve_edge'
       },
-      model_size: 'small',
-      prompt_name: 'dedupe_edges.resolve_edge'
-    },
-    llmContext
-  );
+      llmContext
+    );
 
-  const responseObject = llmResponse as unknown as EdgeDuplicate;
-  const duplicateFacts = responseObject.duplicate_facts ?? [];
-  const contradictedFacts = responseObject.contradicted_facts ?? [];
+    const responseObject = llmResponse as unknown as EdgeDuplicate;
+    const duplicateFacts = responseObject.duplicate_facts ?? [];
+    const contradictedFacts = responseObject.contradicted_facts ?? [];
 
-  // Validate and resolve duplicates
-  const validDuplicateIds = duplicateFacts.filter(
-    (i: number) => i >= 0 && i < relatedEdges.length
-  );
+    // Validate and resolve duplicates
+    const validDuplicateIds = duplicateFacts.filter(
+      (i: number) => i >= 0 && i < relatedEdges.length
+    );
 
-  let resolvedEdge = extractedEdge;
-  for (const duplicateId of validDuplicateIds) {
-    resolvedEdge = { ...relatedEdges[duplicateId]! };
-    break;
-  }
-
-  if (validDuplicateIds.length > 0 && episode) {
-    resolvedEdge.episodes = [...(resolvedEdge.episodes ?? []), episode.uuid];
-  }
-
-  // Process contradictions
-  const invalidationCandidates: EntityEdge[] = [];
-  const maxValidIdx = relatedEdges.length + filteredExistingEdges.length - 1;
-
-  for (const idx of contradictedFacts) {
-    if (idx >= 0 && idx < relatedEdges.length) {
-      invalidationCandidates.push(relatedEdges[idx]!);
-    } else if (idx >= invalidationIdxOffset && idx <= maxValidIdx) {
-      invalidationCandidates.push(filteredExistingEdges[idx - invalidationIdxOffset]!);
+    let resolvedEdge = extractedEdge;
+    for (const duplicateId of validDuplicateIds) {
+      resolvedEdge = { ...relatedEdges[duplicateId]! };
+      break;
     }
-  }
 
-  // Extract structured attributes
-  if (edgeTypeCandidates?.[resolvedEdge.name]?.fields) {
-    const fields = edgeTypeCandidates[resolvedEdge.name]!.fields!;
-    if (Object.keys(fields).length > 0) {
-      const attrs = await extractEdgeAttributes(llmClient, resolvedEdge, episode, fields, llmContext);
-      resolvedEdge.attributes = attrs;
+    if (validDuplicateIds.length > 0 && episode) {
+      resolvedEdge.episodes = [...(resolvedEdge.episodes ?? []), episode.uuid];
     }
-  } else {
-    resolvedEdge.attributes = {};
+
+    // Process contradictions
+    const invalidationCandidates: EntityEdge[] = [];
+    const maxValidIdx = relatedEdges.length + filteredExistingEdges.length - 1;
+
+    for (const idx of contradictedFacts) {
+      if (idx >= 0 && idx < relatedEdges.length) {
+        invalidationCandidates.push(relatedEdges[idx]!);
+      } else if (idx >= invalidationIdxOffset && idx <= maxValidIdx) {
+        invalidationCandidates.push(filteredExistingEdges[idx - invalidationIdxOffset]!);
+      }
+    }
+
+    // Extract structured attributes
+    if (edgeTypeCandidates?.[resolvedEdge.name]?.fields) {
+      const fields = edgeTypeCandidates[resolvedEdge.name]!.fields!;
+      if (Object.keys(fields).length > 0) {
+        const attrs = await extractEdgeAttributes(llmClient, resolvedEdge, episode, fields, llmContext);
+        resolvedEdge.attributes = attrs;
+      }
+    } else {
+      resolvedEdge.attributes = {};
+    }
+
+    // Handle edge expiration
+    const now = utcNow();
+    if (resolvedEdge.invalid_at && !resolvedEdge.expired_at) {
+      resolvedEdge.expired_at = now;
+    }
+
+    // Determine contradictions
+    const invalidatedEdges = resolveEdgeContradictions(
+      resolvedEdge,
+      invalidationCandidates,
+      deprecationGateConfig
+    );
+
+    // Merge pre-filter invalidations with LLM-detected invalidations
+    return finalize(resolvedEdge, [...preFilterInvalidated, ...invalidatedEdges], {
+      'resolution.prefilter.invalidated_count': preFilterInvalidated.length,
+      'resolution.prefilter.skipped': false,
+      'resolution.llm.invoked': true,
+      'resolution.top1_similarity': relatedEdgeScores[0] ?? null,
+      'resolution.top2_similarity': relatedEdgeScores[1] ?? null,
+      'resolution.invalidated.count': preFilterInvalidated.length + invalidatedEdges.length
+    });
+  } finally {
+    scope?.close();
   }
+}
 
-  // Handle edge expiration
-  const now = utcNow();
-  if (resolvedEdge.invalid_at && !resolvedEdge.expired_at) {
-    resolvedEdge.expired_at = now;
-  }
+export function shouldSkipEdgeResolution(
+  scores: number[],
+  config?: GraphitiResolutionConfig
+): boolean {
+  if (!config?.pre_filter_enabled) return false;
+  if (scores.length < 2) return false;
 
-  // Determine contradictions
-  const invalidatedEdges = resolveEdgeContradictions(
-    resolvedEdge,
-    invalidationCandidates,
-    deprecationGateConfig
-  );
+  const top1 = scores[0] ?? Number.NEGATIVE_INFINITY;
+  const top2 = scores[1] ?? Number.NEGATIVE_INFINITY;
+  const threshold = config.edge_similarity_threshold ?? 0.65;
+  const marginThreshold = config.margin_threshold ?? 0.05;
+  const margin = top1 - top2;
 
-  // Merge pre-filter invalidations with LLM-detected invalidations
-  return [resolvedEdge, [...preFilterInvalidated, ...invalidatedEdges]];
+  return top1 < threshold && margin < marginThreshold;
 }
 
 export function resolveEdgeContradictions(

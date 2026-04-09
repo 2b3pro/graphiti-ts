@@ -113,8 +113,13 @@ export async function generateResponse(
   const inputText = processedMessages.map((m) => m.content).join('');
   const inputTokenEstimate = estimateTokens(inputText);
 
+  // Select model: use small_model when model_size is 'small' and small_model is configured
+  const modelOverride = options.model_size === 'small' && client.small_model
+    ? client.small_model
+    : null;
+
   // Generate text response
-  const responseText = await client.generateText(processedMessages);
+  const responseText = await client.generateText(processedMessages, { model_override: modelOverride });
 
   // Track token usage if tracker and prompt_name are available
   if (tokenTracker && options.prompt_name) {

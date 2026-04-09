@@ -10,6 +10,8 @@
 import { utcNow } from '@graphiti/shared';
 
 import type { GraphitiClients, LLMClient, GenerateResponseOptions } from '../contracts';
+import type { GraphitiResolutionConfig } from '../config';
+import { logResolutionDecision } from '../config';
 import { generateResponse as defaultGenerateResponse, type GenerateResponseContext } from '../llm/generate-response';
 import type { EntityEdge } from '../domain/edges';
 import type { EntityNode, EpisodicNode, EpisodeType } from '../domain/nodes';
@@ -207,66 +209,95 @@ export async function resolveExtractedNodes(
   episode?: EpisodicNode | null,
   previousEpisodes?: EpisodicNode[] | null,
   entityTypes?: Record<string, EntityTypeDefinition> | null,
-  existingNodesOverride?: EntityNode[] | null
+  existingNodesOverride?: EntityNode[] | null,
+  resolutionConfig?: GraphitiResolutionConfig
 ): Promise<[EntityNode[], Record<string, string>, Array<[EntityNode, EntityNode]>]> {
   if (extractedNodes.length === 0) {
     return [[], {}, []];
   }
 
+  const scope = clients.tracer.startSpan('resolution.nodes');
   const llmClient = clients.llm_client;
 
-  // Collect candidate nodes from search
-  const existingNodes = await collectCandidateNodes(
-    clients,
-    extractedNodes,
-    existingNodesOverride ?? null
-  );
+  try {
+    // Collect candidate nodes from search
+    const candidateCollection = await collectCandidateNodes(
+      clients,
+      extractedNodes,
+      existingNodesOverride ?? null
+    );
+    const existingNodes = candidateCollection.nodes;
 
-  const indexes = buildCandidateIndexes(existingNodes);
-  const state: DedupResolutionState = {
-    resolvedNodes: new Array(extractedNodes.length).fill(null),
-    uuidMap: new Map(),
-    unresolvedIndices: [],
-    duplicatePairs: []
-  };
+    const indexes = buildCandidateIndexes(existingNodes);
+    const state: DedupResolutionState = {
+      resolvedNodes: new Array(extractedNodes.length).fill(null),
+      uuidMap: new Map(),
+      unresolvedIndices: [],
+      duplicatePairs: []
+    };
 
-  // Phase 1: Resolve with string similarity
-  resolveWithSimilarity(extractedNodes, indexes, state);
+    // Phase 1: Resolve with string similarity
+    resolveWithSimilarity(extractedNodes, indexes, state);
+    const unresolvedAfterSimilarity = state.unresolvedIndices.length;
 
-  // Phase 2: Escalate unresolved to LLM
-  await resolveWithLlm(
-    llmClient,
-    extractedNodes,
-    indexes,
-    state,
-    episode ?? null,
-    previousEpisodes ?? null,
-    entityTypes ?? null,
-    buildContext(clients)
-  );
+    // Phase 1.5: Skip obvious non-matches using search similarity signals
+    const preFilterStats = applyNodeResolutionPreFilter(
+      extractedNodes,
+      candidateCollection.searchResults,
+      state,
+      resolutionConfig
+    );
 
-  // Fill in any remaining unresolved nodes
-  for (let idx = 0; idx < extractedNodes.length; idx++) {
-    if (state.resolvedNodes[idx] === null) {
-      state.resolvedNodes[idx] = extractedNodes[idx]!;
-      state.uuidMap.set(extractedNodes[idx]!.uuid, extractedNodes[idx]!.uuid);
+    // Phase 2: Escalate unresolved to LLM
+    const llmCandidateCount = state.unresolvedIndices.length;
+    await resolveWithLlm(
+      llmClient,
+      extractedNodes,
+      indexes,
+      state,
+      episode ?? null,
+      previousEpisodes ?? null,
+      entityTypes ?? null,
+      buildContext(clients)
+    );
+
+    // Fill in any remaining unresolved nodes
+    for (let idx = 0; idx < extractedNodes.length; idx++) {
+      if (state.resolvedNodes[idx] === null) {
+        state.resolvedNodes[idx] = extractedNodes[idx]!;
+        state.uuidMap.set(extractedNodes[idx]!.uuid, extractedNodes[idx]!.uuid);
+      }
     }
+
+    const resolvedNodes = state.resolvedNodes.filter((n): n is EntityNode => n !== null);
+    const uuidMap: Record<string, string> = Object.fromEntries(state.uuidMap);
+    const duplicatePairs: Array<[EntityNode, EntityNode]> = state.duplicatePairs as Array<
+      [EntityNode, EntityNode]
+    >;
+
+    scope.span.addAttributes({
+      'resolution.kind': 'nodes',
+      'resolution.extracted.count': extractedNodes.length,
+      'resolution.candidate.count': existingNodes.length,
+      'resolution.similarity.unresolved_count': unresolvedAfterSimilarity,
+      'resolution.prefilter.enabled': resolutionConfig?.pre_filter_enabled ?? false,
+      'resolution.prefilter.evaluated_count': preFilterStats.evaluatedCount,
+      'resolution.prefilter.skipped_count': preFilterStats.skippedCount,
+      'resolution.llm.candidate_count': llmCandidateCount,
+      'resolution.output.count': resolvedNodes.length
+    });
+
+    return [resolvedNodes, uuidMap, duplicatePairs];
+  } finally {
+    scope.close();
   }
-
-  const resolvedNodes = state.resolvedNodes.filter((n): n is EntityNode => n !== null);
-  const uuidMap: Record<string, string> = Object.fromEntries(state.uuidMap);
-  const duplicatePairs: Array<[EntityNode, EntityNode]> = state.duplicatePairs as Array<
-    [EntityNode, EntityNode]
-  >;
-
-  return [resolvedNodes, uuidMap, duplicatePairs];
 }
 
 async function collectCandidateNodes(
   clients: GraphitiClients,
   extractedNodes: EntityNode[],
   existingNodesOverride: EntityNode[] | null
-): Promise<EntityNode[]> {
+): Promise<{ nodes: EntityNode[]; searchResults: SearchResults[] }> {
   // Search for existing nodes matching each extracted node name
   const searchResults: SearchResults[] = await semaphoreGather(
     extractedNodes.map(
@@ -289,11 +320,73 @@ async function collectCandidateNodes(
 
   // Deduplicate by UUID
   const seen = new Set<string>();
-  return candidateNodes.filter((node) => {
+  const nodes = candidateNodes.filter((node) => {
     if (seen.has(node.uuid)) return false;
     seen.add(node.uuid);
     return true;
   });
+
+  return { nodes, searchResults };
+}
+
+export function shouldSkipNodeResolution(
+  scores: number[],
+  config?: GraphitiResolutionConfig
+): boolean {
+  if (!config?.pre_filter_enabled) return false;
+  if (scores.length < 2) return false;
+
+  const top1 = scores[0] ?? Number.NEGATIVE_INFINITY;
+  const top2 = scores[1] ?? Number.NEGATIVE_INFINITY;
+  const threshold = config.node_similarity_threshold ?? 0.7;
+  const marginThreshold = config.margin_threshold ?? 0.05;
+  const margin = top1 - top2;
+
+  return top1 < threshold && margin < marginThreshold;
+}
+
+function applyNodeResolutionPreFilter(
+  extractedNodes: EntityNode[],
+  searchResults: SearchResults[],
+  state: DedupResolutionState,
+  config?: GraphitiResolutionConfig
+): { evaluatedCount: number; skippedCount: number } {
+  if (!config?.pre_filter_enabled || state.unresolvedIndices.length === 0) {
+    return { evaluatedCount: 0, skippedCount: 0 };
+  }
+
+  const remaining: number[] = [];
+  let skippedCount = 0;
+
+  for (const idx of state.unresolvedIndices) {
+    const node = extractedNodes[idx]!;
+    const scores = searchResults[idx]?.node_reranker_scores ?? [];
+    const top1 = scores[0] ?? null;
+    const top2 = scores[1] ?? null;
+    const skipped = shouldSkipNodeResolution(scores, config);
+
+    logResolutionDecision(config, '[graphiti-ts][resolution][node]', {
+      entity_name: node.name,
+      top1_similarity: top1,
+      top2_similarity: top2,
+      margin: top1 !== null && top2 !== null ? top1 - top2 : null,
+      skipped,
+    });
+
+    if (skipped) {
+      state.resolvedNodes[idx] = node;
+      state.uuidMap.set(node.uuid, node.uuid);
+      skippedCount++;
+    } else {
+      remaining.push(idx);
+    }
+  }
+
+  state.unresolvedIndices = remaining;
+  return {
+    evaluatedCount: remaining.length + skippedCount,
+    skippedCount
+  };
 }
 
 async function resolveWithLlm(

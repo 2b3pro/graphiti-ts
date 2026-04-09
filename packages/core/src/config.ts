@@ -17,6 +17,16 @@ export interface GraphitiBulkIngestConfig {
   prefer_batch_embeddings?: boolean;
 }
 
+export interface GraphitiResolutionConfig {
+  pre_filter_enabled?: boolean;
+  node_similarity_threshold?: number;
+  edge_similarity_threshold?: number;
+  margin_threshold?: number;
+  log_decisions?: boolean;
+  /** File path for JSONL decision log. When set, resolution decisions are appended here instead of console.info. */
+  log_destination?: string;
+}
+
 export interface GraphitiLifecycleConfig {
   deprecation_gate?: DeprecationGateConfig;
 }
@@ -25,6 +35,7 @@ export interface GraphitiConfig {
   extraction: GraphitiExtractionConfig;
   community: GraphitiCommunityConfig;
   bulk_ingest: GraphitiBulkIngestConfig;
+  resolution: GraphitiResolutionConfig;
   lifecycle: GraphitiLifecycleConfig;
 }
 
@@ -32,6 +43,7 @@ export interface GraphitiConfigOverrides {
   extraction?: GraphitiExtractionConfig;
   community?: GraphitiCommunityConfig;
   bulk_ingest?: GraphitiBulkIngestConfig;
+  resolution?: GraphitiResolutionConfig;
   lifecycle?: GraphitiLifecycleConfig;
 }
 
@@ -45,8 +57,41 @@ export const DEFAULT_GRAPHITI_CONFIG: GraphitiConfig = {
   bulk_ingest: {
     prefer_batch_embeddings: true
   },
+  resolution: {
+    pre_filter_enabled: false,
+    node_similarity_threshold: 0.7,
+    edge_similarity_threshold: 0.65,
+    margin_threshold: 0.05,
+    log_decisions: false
+  },
   lifecycle: {}
 };
+
+/**
+ * Log a resolution decision. Routes to file (JSONL append) when log_destination is set,
+ * otherwise falls back to console.info for interceptor-based capture.
+ */
+export function logResolutionDecision(
+  config: GraphitiResolutionConfig,
+  prefix: string,
+  data: Record<string, unknown>,
+): void {
+  if (!config.log_decisions) return;
+
+  const line = JSON.stringify(data);
+
+  if (config.log_destination) {
+    try {
+      const { appendFileSync } = require('fs');
+      appendFileSync(config.log_destination, `${prefix} ${line}\n`);
+    } catch {
+      // Fall back to console if file write fails
+      console.info(prefix, line);
+    }
+  } else {
+    console.info(prefix, line);
+  }
+}
 
 export function createGraphitiConfig(
   overrides: GraphitiConfigOverrides = {}
@@ -67,6 +112,10 @@ export function createGraphitiConfig(
     bulk_ingest: {
       ...DEFAULT_GRAPHITI_CONFIG.bulk_ingest,
       ...overrides.bulk_ingest
+    },
+    resolution: {
+      ...DEFAULT_GRAPHITI_CONFIG.resolution,
+      ...overrides.resolution
     },
     lifecycle: {
       ...DEFAULT_GRAPHITI_CONFIG.lifecycle,

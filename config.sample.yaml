@@ -221,6 +221,12 @@ graphiti:
     batch_size: 40
   bulk_ingest:
     prefer_batch_embeddings: true
+  resolution:
+    pre_filter_enabled: false
+    node_similarity_threshold: 0.70
+    edge_similarity_threshold: 0.65
+    margin_threshold: 0.05
+    log_decisions: false
   lifecycle:
     deprecation_gate:
       weights:

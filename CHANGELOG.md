@@ -1,6 +1,24 @@
 # Changelog
 
-## v0.2.0 (planned)
+## v0.2.1
+
+### Resolution & inference optimization
+
+- **Resolution pre-filter:** Config-gated similarity pre-filter (`resolution.pre_filter_enabled`) with margin-aware skip logic for node and edge resolution. Skips LLM dedup calls when candidates are clearly non-matches (low similarity + weak margin). Controlled by `node_similarity_threshold`, `edge_similarity_threshold`, and `margin_threshold`.
+- **Resolution decision logging:** `log_decisions` flag emits structured JSON for every resolution decision (skipped or LLM-resolved). `log_destination` routes output to a JSONL file instead of console, enabling post-hoc threshold analysis.
+- **`logResolutionDecision()` helper:** Centralized log routing in `config.ts` — file append when `log_destination` is set, console.info fallback. Both node-operations and edge-operations use it.
+- **Edge scores in bulk path:** `dedupeEdgesBulk()` now computes and passes cosine similarity scores to `resolveExtractedEdge()` (was `[]`), enabling the edge pre-filter in bulk ingestion.
+
+### LLM client improvements
+
+- **Rate limit retry with backoff:** `OpenAIGenericClient` now retries 429/rate-limit errors with exponential backoff (3s base, up to 4 retries) instead of failing immediately. Fixes gateway overload causing total ingestion failure.
+- **`small_model` wiring:** `generateText()` accepts optional `model_override` parameter. `generateResponse()` passes `client.small_model` when `model_size: 'small'` is requested. Resolution and dedup calls now route to the configured small model (e.g., haiku) instead of always using the primary model (e.g., sonnet).
+
+### Future consideration
+
+- **Hook/plugin pattern:** Explore whether a post-extraction hook or plugin architecture would allow consumers to inject custom enrichment (e.g., epistemic classification, quality scoring, citation extraction) without modifying core extraction prompts. PAI currently runs a second-pass overlay for this; a first-class hook on `addEpisodeFull`/`addEpisodeBulkFull` would eliminate that second pass. Design questions: callback vs event emitter, what data the hook receives (episode UUID, created edge UUIDs + triples, episode text), and whether hooks can reject/modify edges before persistence.
+
+## v0.2.0
 
 - Add `EpisodeTypes.document` for document-oriented ingestion.
 - Wire `custom_extraction_instructions` into node and edge extraction prompts.

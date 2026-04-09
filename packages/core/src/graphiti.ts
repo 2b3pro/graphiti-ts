@@ -687,7 +687,9 @@ export class Graphiti {
         extractedNodes,
         episode,
         previousEpisodes,
-        input.entity_types
+        input.entity_types,
+        undefined,
+        this.config.resolution
       );
 
       // Extract edges
@@ -714,7 +716,8 @@ export class Graphiti {
         nodes,
         input.edge_types ?? {},
         edgeTypeMap,
-        this.config.lifecycle.deprecation_gate
+        this.config.lifecycle.deprecation_gate,
+        this.config.resolution
       );
 
       const entityEdges = [...resolvedEdges, ...invalidatedEdges];
@@ -876,7 +879,8 @@ export class Graphiti {
         scopedClients,
         extractedNodesBulk,
         episodeTuples,
-        input.entity_types
+        input.entity_types,
+        this.config.resolution
       );
 
       // Build episodic edges
@@ -902,6 +906,7 @@ export class Graphiti {
               ...(this.config.lifecycle.deprecation_gate === undefined
                 ? {}
                 : { deprecation_gate_config: this.config.lifecycle.deprecation_gate }),
+              resolution_config: this.config.resolution,
               ...this.getBulkEmbeddingOptions()
             }
       );
@@ -1198,7 +1203,7 @@ export class Graphiti {
     try {
       resolvedSource = await nodes.entity.getByUuid(input.source.uuid);
     } catch {
-      const [resolvedNodes] = await resolveExtractedNodes(scopedClients, [input.source]);
+      const [resolvedNodes] = await resolveExtractedNodes(scopedClients, [input.source], undefined, undefined, undefined, undefined, this.config.resolution);
       resolvedSource = resolvedNodes[0] ?? input.source;
     }
 
@@ -1207,7 +1212,7 @@ export class Graphiti {
     try {
       resolvedTarget = await nodes.entity.getByUuid(input.target.uuid);
     } catch {
-      const [resolvedNodes] = await resolveExtractedNodes(scopedClients, [input.target]);
+      const [resolvedNodes] = await resolveExtractedNodes(scopedClients, [input.target], undefined, undefined, undefined, undefined, this.config.resolution);
       resolvedTarget = resolvedNodes[0] ?? input.target;
     }
 
@@ -1290,11 +1295,14 @@ export class Graphiti {
       scopedClients.llm_client,
       edge,
       relatedResults.edges,
+      relatedResults.edge_reranker_scores,
       existingResults.edges,
       dummyEpisode,
       undefined,
       undefined,
-      this.config.lifecycle.deprecation_gate
+      this.config.lifecycle.deprecation_gate,
+      this.config.resolution,
+      this.tracer
     );
 
     const allEdges = [resolvedEdge, ...invalidatedEdges];

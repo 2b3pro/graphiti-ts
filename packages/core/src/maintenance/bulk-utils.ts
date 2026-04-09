@@ -11,6 +11,7 @@
 import { GraphProviders } from '@graphiti/shared';
 
 import type { GraphitiClients, EmbedderClient, GraphDriver } from '../contracts';
+import type { GraphitiResolutionConfig } from '../config';
 import type { DeprecationGateConfig } from '../domain/deprecation-gate';
 import type { EntityEdge, EpisodicEdge } from '../domain/edges';
 import type { EntityNode, EpisodicNode } from '../domain/nodes';
@@ -256,7 +257,8 @@ export async function dedupeNodesBulk(
   clients: GraphitiClients,
   extractedNodes: EntityNode[][],
   episodeTuples: Array<[EpisodicNode, EpisodicNode[]]>,
-  entityTypes?: Record<string, EntityTypeDefinition> | null
+  entityTypes?: Record<string, EntityTypeDefinition> | null,
+  resolutionConfig?: GraphitiResolutionConfig
 ): Promise<[Record<string, EntityNode[]>, Record<string, string>]> {
   // First pass: resolve each episode's nodes against the graph
   const firstPassResults = await semaphoreGather(
@@ -268,7 +270,9 @@ export async function dedupeNodesBulk(
             nodes,
             episodeTuples[i]![0],
             episodeTuples[i]![1],
-            entityTypes
+            entityTypes,
+            undefined,
+            resolutionConfig
           )
     )
   );
@@ -375,6 +379,7 @@ export async function dedupeEdgesBulk(
   options: {
     deprecation_gate_config?: DeprecationGateConfig;
     prefer_batch_embeddings?: boolean;
+    resolution_config?: GraphitiResolutionConfig;
   } = {}
 ): Promise<Record<string, EntityEdge[]>> {
   const embedder = clients.embedder;
@@ -404,13 +409,14 @@ export async function dedupeEdgesBulk(
   }
 
   // Find similar candidates and resolve
-  const dedupeTuples: Array<[EpisodicNode, EntityEdge, EntityEdge[]]> = [];
+  const dedupeTuples: Array<[EpisodicNode, EntityEdge, EntityEdge[], number[]]> = [];
   const allEdges = extractedEdges.flat();
 
   for (let i = 0; i < extractedEdges.length; i++) {
     const episode = episodeTuples[i]![0];
     for (const edge of extractedEdges[i]!) {
       const candidates: EntityEdge[] = [];
+      const candidateScores: number[] = [];
       for (const existing of allEdges) {
         if (edge.uuid === existing.uuid) continue;
         if (
@@ -418,6 +424,15 @@ export async function dedupeEdgesBulk(
           edge.target_node_uuid !== existing.target_node_uuid
         ) {
           continue;
+        }
+
+        // Cosine similarity (compute first so we can record the score)
+        let cosineSim = 0;
+        if (edge.fact_embedding && existing.fact_embedding) {
+          cosineSim = edge.fact_embedding.reduce(
+            (sum, val, idx) => sum + val * (existing.fact_embedding![idx] ?? 0),
+            0
+          );
         }
 
         // Word overlap check
@@ -431,41 +446,35 @@ export async function dedupeEdgesBulk(
           }
         }
 
-        if (hasOverlap) {
+        if (hasOverlap || cosineSim >= minScore) {
           candidates.push(existing);
-          continue;
-        }
-
-        // Cosine similarity check
-        if (edge.fact_embedding && existing.fact_embedding) {
-          const dotProduct = edge.fact_embedding.reduce(
-            (sum, val, idx) => sum + val * (existing.fact_embedding![idx] ?? 0),
-            0
-          );
-          if (dotProduct >= minScore) {
-            candidates.push(existing);
-          }
+          candidateScores.push(cosineSim);
         }
       }
 
-      dedupeTuples.push([episode, edge, candidates]);
+      // Sort scores descending for pre-filter consumption
+      candidateScores.sort((a, b) => b - a);
+      dedupeTuples.push([episode, edge, candidates, candidateScores]);
     }
   }
 
   // Resolve duplicates
   const resolutions = await semaphoreGather(
     dedupeTuples.map(
-      ([episode, edge, candidates]) =>
+      ([episode, edge, candidates, scores]) =>
         () =>
           resolveExtractedEdge(
             clients.llm_client,
             edge,
             candidates,
+            scores,
             candidates,
             episode,
             edgeTypes,
             undefined,
-            options.deprecation_gate_config
+            options.deprecation_gate_config,
+            options.resolution_config,
+            clients.tracer
           )
     )
   );

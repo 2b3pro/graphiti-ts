@@ -11,7 +11,8 @@ import {
   buildEpisodicEdges,
   resolveEdgePointers,
   extractEdges,
-  resolveExtractedEdge
+  resolveExtractedEdge,
+  shouldSkipEdgeResolution
 } from './edge-operations';
 
 // ---------------------------------------------------------------------------
@@ -318,6 +319,20 @@ describe('extractEdges', () => {
 // ---------------------------------------------------------------------------
 
 describe('resolveExtractedEdge', () => {
+  test('pre-filter helper skips only low-score weak-margin candidates', () => {
+    expect(shouldSkipEdgeResolution([0.6, 0.58], {
+      pre_filter_enabled: true,
+      edge_similarity_threshold: 0.65,
+      margin_threshold: 0.05
+    })).toBe(true);
+
+    expect(shouldSkipEdgeResolution([0.6, 0.45], {
+      pre_filter_enabled: true,
+      edge_similarity_threshold: 0.65,
+      margin_threshold: 0.05
+    })).toBe(false);
+  });
+
   test('returns edge as-is when no related or existing edges', async () => {
     const llmClient = makeMockLLMClient([]);
     const edge = makeEdge('e1', 's1', 't1', 'Alice works at Acme');
@@ -326,6 +341,7 @@ describe('resolveExtractedEdge', () => {
     const [resolved, invalidated] = await resolveExtractedEdge(
       llmClient,
       edge,
+      [],
       [],
       [],
       episode
@@ -348,6 +364,7 @@ describe('resolveExtractedEdge', () => {
       llmClient,
       extracted,
       [existing],
+      [0.95, 0.1],
       [],
       episode
     );
@@ -371,6 +388,7 @@ describe('resolveExtractedEdge', () => {
       llmClient,
       extracted,
       [existing],
+      [0.7, 0.65],
       [],
       episode
     );
@@ -399,6 +417,7 @@ describe('resolveExtractedEdge', () => {
       llmClient,
       extracted,
       [related],
+      [0.75, 0.4],
       [existing],
       episode
     );
@@ -435,6 +454,7 @@ describe('resolveExtractedEdge', () => {
       llmClient,
       extracted,
       [],          // no related edges (skip exact-match fast path)
+      [],
       [existing],
       episode
     );
@@ -469,6 +489,7 @@ describe('resolveExtractedEdge', () => {
       llmClient,
       extracted,
       [],
+      [],
       [existing],
       episode
     );
@@ -496,6 +517,7 @@ describe('resolveExtractedEdge', () => {
     await resolveExtractedEdge(
       llmClient,
       extracted,
+      [],
       [],
       [existing],
       episode
@@ -529,6 +551,7 @@ describe('resolveExtractedEdge', () => {
     const [_resolved, invalidated] = await resolveExtractedEdge(
       llmClient,
       extracted,
+      [],
       [],
       [existing],
       episode
@@ -567,6 +590,7 @@ describe('resolveExtractedEdge', () => {
       llmClient,
       extracted,
       [related],
+      [0.8, 0.2],
       [existing],
       episode
     );
@@ -598,6 +622,7 @@ describe('resolveExtractedEdge', () => {
     const [resolved] = await resolveExtractedEdge(
       llmClient,
       edge,
+      [],
       [],
       [],
       episode,
