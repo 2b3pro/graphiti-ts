@@ -97,7 +97,7 @@ async function collectNodeSearchResults(
   }
 
   const searchResults: SearchResults['nodes'][] = [];
-  const expandedLimit = config.limit * 2;
+  const expandedLimit = config.limit * config.candidate_expansion;
   const queryEmbedding = options.query_embedding ?? null;
 
   if (
@@ -189,7 +189,7 @@ async function collectEdgeSearchResults(
   }
 
   const searchResults: SearchResults['edges'][] = [];
-  const expandedLimit = config.limit * 2;
+  const expandedLimit = config.limit * config.candidate_expansion;
   const queryEmbedding = options.query_embedding ?? null;
 
   if (
@@ -286,7 +286,7 @@ async function collectEpisodeSearchResults(
     query,
     searchFilter,
     groupIds,
-    config.limit * 2
+    config.limit * config.candidate_expansion
   );
 
   return rerankEpisodeResults(
@@ -705,7 +705,7 @@ async function collectCommunitySearchResults(
   }
 
   const searchResults: SearchResults['communities'][] = [];
-  const expandedLimit = config.limit * 2;
+  const expandedLimit = config.limit * config.candidate_expansion;
   const queryEmbedding = options.query_embedding ?? null;
 
   if (

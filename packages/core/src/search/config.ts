@@ -116,6 +116,8 @@ export interface SearchConfig {
   community_config?: CommunitySearchConfig | null;
   limit: number;
   reranker_min_score: number;
+  /** Multiplier for candidate retrieval before reranking (default: 2). Lower = faster, higher = better recall. */
+  candidate_expansion: number;
 }
 
 export interface SearchResults {
@@ -186,7 +188,8 @@ export function createSearchConfig(
     episode_config: overrides.episode_config ?? null,
     community_config: overrides.community_config ?? null,
     limit: overrides.limit ?? DEFAULT_SEARCH_LIMIT,
-    reranker_min_score: overrides.reranker_min_score ?? 0
+    reranker_min_score: overrides.reranker_min_score ?? 0,
+    candidate_expansion: overrides.candidate_expansion ?? 2
   };
 }
 

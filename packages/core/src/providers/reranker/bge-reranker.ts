@@ -34,37 +34,45 @@ export class BGERerankerClient implements CrossEncoderClient {
       return [];
     }
 
-    const response = await fetch(this.endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        query,
-        texts: passages,
-        model: this.model
-      })
-    });
+    // BGE/TEI rerankers enforce a max batch size (typically 32).
+    // Split into chunks and merge results.
+    const BATCH_SIZE = 32;
+    const allScored: Array<[string, number]> = [];
 
-    if (!response.ok) {
-      throw new Error(`BGE Reranker request failed: ${response.status} ${response.statusText}`);
+    for (let offset = 0; offset < passages.length; offset += BATCH_SIZE) {
+      const batch = passages.slice(offset, offset + BATCH_SIZE);
+
+      const response = await fetch(this.endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query,
+          texts: batch,
+          model: this.model
+        })
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.text().catch(() => '');
+        throw new Error(`BGE Reranker request failed: ${response.status} ${response.statusText} — ${errorBody}`);
+      }
+
+      const raw = await response.json();
+
+      // Handle both formats:
+      // - TEI (text-embeddings-inference): flat array [{index, score}]
+      // - Wrapped format: {results: [{index, score}]}
+      const items: Array<{ index: number; score: number }> = Array.isArray(raw)
+        ? raw
+        : (raw as { results?: Array<{ index: number; score: number }> }).results ?? [];
+
+      // Map batch-local indices back to the original passage text
+      for (const r of items) {
+        allScored.push([batch[r.index] ?? '', r.score]);
+      }
     }
 
-    const raw = await response.json();
-
-    // Handle both formats:
-    // - TEI (text-embeddings-inference): flat array [{index, score}]
-    // - Wrapped format: {results: [{index, score}]}
-    const items: Array<{ index: number; score: number }> = Array.isArray(raw)
-      ? raw
-      : (raw as { results?: Array<{ index: number; score: number }> }).results ?? [];
-
-    // Map results back to passages and sort by score descending
-    const scored: Array<[string, number]> = items.map((r) => [
-      passages[r.index] ?? '',
-      r.score
-    ]);
-
-    scored.sort((a, b) => b[1] - a[1]);
-
-    return scored;
+    allScored.sort((a, b) => b[1] - a[1]);
+    return allScored;
   }
 }
