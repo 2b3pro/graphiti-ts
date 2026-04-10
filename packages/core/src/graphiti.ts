@@ -718,7 +718,8 @@ export class Graphiti {
         input.edge_types ?? {},
         edgeTypeMap,
         this.config.lifecycle.deprecation_gate,
-        this.config.resolution
+        this.config.resolution,
+        this.max_coroutines
       );
 
       const entityEdges = [...resolvedEdges, ...invalidatedEdges];

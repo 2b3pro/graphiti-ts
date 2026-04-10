@@ -469,7 +469,11 @@ export async function dedupeEdgesBulk(
     }
   }
 
-  // Resolve duplicates
+  // Resolve duplicates — bound concurrency to match gateway capacity
+  const edgeResolutionConcurrency =
+    options.resolution_config?.bulk_edge_resolution_max_concurrency ??
+    options.maxConcurrency ??
+    undefined;
   const resolutions = await semaphoreGather(
     dedupeTuples.map(
       ([episode, edge, candidates, scores]) =>
@@ -487,7 +491,8 @@ export async function dedupeEdgesBulk(
             options.resolution_config,
             clients.tracer
           )
-    )
+    ),
+    edgeResolutionConcurrency
   );
 
   // Build duplicate pairs from resolutions

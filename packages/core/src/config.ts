@@ -25,6 +25,8 @@ export interface GraphitiResolutionConfig {
   log_decisions?: boolean;
   /** File path for JSONL decision log. When set, resolution decisions are appended here instead of console.info. */
   log_destination?: string;
+  /** Max concurrent edge resolution LLM calls in bulk ingest. Limits semaphoreGather fanout to match gateway capacity. */
+  bulk_edge_resolution_max_concurrency?: number;
 }
 
 export interface GraphitiLifecycleConfig {

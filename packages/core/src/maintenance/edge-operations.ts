@@ -221,7 +221,8 @@ export async function resolveExtractedEdges(
   edgeTypes: Record<string, EdgeTypeDefinition>,
   edgeTypeMap: Record<string, string[]>,
   deprecationGateConfig?: DeprecationGateConfig,
-  resolutionConfig?: GraphitiResolutionConfig
+  resolutionConfig?: GraphitiResolutionConfig,
+  maxConcurrency?: number | null
 ): Promise<[EntityEdge[], EntityEdge[], EntityEdge[]]> {
   if (extractedEdges.length === 0) {
     return [[], [], []];
@@ -245,11 +246,17 @@ export async function resolveExtractedEdges(
   // Generate embeddings for extracted edges
   await createEntityEdgeEmbeddings(embedder, deduplicatedEdges);
 
+  // Resolve concurrency limit from resolution config or explicit parameter
+  const concurrencyLimit =
+    resolutionConfig?.bulk_edge_resolution_max_concurrency ??
+    (maxConcurrency !== null && maxConcurrency !== undefined ? maxConcurrency : undefined);
+
   // Get valid edges between node pairs
   const validEdgesLists: EntityEdge[][] = await semaphoreGather(
     deduplicatedEdges.map(
       (edge) => () => getEdgesBetweenNodes(driver, edge.source_node_uuid, edge.target_node_uuid)
-    )
+    ),
+    concurrencyLimit
   );
 
   // Search for related edges
@@ -265,7 +272,8 @@ export async function resolveExtractedEdges(
             edge_uuids: validEdgesLists[i]?.map((e) => e.uuid) ?? []
           })
         )
-    )
+    ),
+    concurrencyLimit
   );
 
   const relatedEdgesLists = relatedEdgesResults.map((r) => r.edges);
@@ -282,7 +290,8 @@ export async function resolveExtractedEdges(
           EDGE_HYBRID_SEARCH_RRF,
           createSearchFilters()
         )
-    )
+    ),
+    concurrencyLimit
   );
 
   // Remove duplicates between related edges and invalidation candidates
@@ -319,7 +328,8 @@ export async function resolveExtractedEdges(
           resolutionConfig,
           clients.tracer
         )
-    )
+    ),
+    concurrencyLimit
   );
 
   const resolvedEdges: EntityEdge[] = [];
