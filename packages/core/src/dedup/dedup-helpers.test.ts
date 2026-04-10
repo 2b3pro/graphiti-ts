@@ -29,10 +29,14 @@ function entity(uuid: string, name: string): EntityNode {
 // Normalization
 // ---------------------------------------------------------------------------
 
-test('normalizeStringExact lowercases and collapses whitespace', () => {
+test('normalizeStringExact lowercases, collapses whitespace, strips trailing punctuation', () => {
   expect(normalizeStringExact('  Alice   Johnson  ')).toBe('alice johnson');
   expect(normalizeStringExact('BOB')).toBe('bob');
   expect(normalizeStringExact('a\t\nb')).toBe('a b');
+  expect(normalizeStringExact('component of Claude Code.')).toBe('component of claude code');
+  expect(normalizeStringExact('Hello!')).toBe('hello');
+  expect(normalizeStringExact('wait...')).toBe('wait');
+  expect(normalizeStringExact('item;')).toBe('item');
 });
 
 test('normalizeNameForFuzzy strips punctuation but keeps apostrophes', () => {

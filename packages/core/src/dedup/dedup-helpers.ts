@@ -18,7 +18,7 @@ export const MINHASH_BAND_SIZE = 4;
 // ---------------------------------------------------------------------------
 
 export function normalizeStringExact(name: string): string {
-  return name.toLowerCase().replace(/\s+/g, ' ').trim();
+  return name.toLowerCase().replace(/\s+/g, ' ').trim().replace(/[.!?,;:]+$/, '');
 }
 
 export function normalizeNameForFuzzy(name: string): string {

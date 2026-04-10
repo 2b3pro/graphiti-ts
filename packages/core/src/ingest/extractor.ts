@@ -172,7 +172,7 @@ export function extractEntityEdges(
         target_node_uuid: targetNode.uuid,
         created_at: episode.created_at,
         name: relation,
-        fact: match[0],
+        fact: match[0].trim().replace(/[.!?,;:]+$/, ''),
         episodes: [episode.uuid]
       });
     }
@@ -455,7 +455,7 @@ function validateExtractionEdges(value: unknown): ModelExtractionResponse['entit
       ...(typeof edge.source === 'string' ? { source: edge.source } : {}),
       ...(typeof edge.target === 'string' ? { target: edge.target } : {}),
       ...(typeof edge.name === 'string' ? { name: edge.name } : {}),
-      ...(typeof edge.fact === 'string' ? { fact: edge.fact } : {})
+      ...(typeof edge.fact === 'string' ? { fact: edge.fact.trim().replace(/[.!?,;:]+$/, '') } : {})
     };
   });
 }

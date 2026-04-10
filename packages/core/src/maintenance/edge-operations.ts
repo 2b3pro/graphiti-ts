@@ -198,7 +198,7 @@ export async function extractEdges(
       target_node_uuid: targetNode.uuid,
       name: edgeData.relation_type,
       group_id: groupId,
-      fact: edgeData.fact,
+      fact: edgeData.fact.trim().replace(/[.!?,;:]+$/, ''),
       episodes: [episode.uuid],
       created_at: now,
       valid_at: validAt,
