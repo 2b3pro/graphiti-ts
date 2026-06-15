@@ -309,7 +309,9 @@ export class EpisodeNodeNamespace {
     const whereClauses = ['n.group_id IN $group_ids'];
 
     if (referenceTime) {
-      params.reference_time = referenceTime;
+      // Date props are stored as ISO strings (serializeForCypher); the param
+      // must match or `string <= datetime` silently matches nothing.
+      params.reference_time = serializeForCypher(referenceTime);
       whereClauses.push('(n.created_at <= $reference_time OR n.valid_at <= $reference_time)');
     }
 

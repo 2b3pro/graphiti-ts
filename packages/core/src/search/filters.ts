@@ -2,6 +2,7 @@ import {
   type GraphProvider,
   validateNodeLabels
 } from '@graphiti/shared';
+import { serializeForCypher } from '../utils/serialization';
 
 export const ComparisonOperators = {
   equals: '=',
@@ -18,7 +19,12 @@ export type ComparisonOperator =
   (typeof ComparisonOperators)[keyof typeof ComparisonOperators];
 
 export interface DateFilter {
-  date?: Date | null;
+  /**
+   * Comparison value. A `Date` is coerced to an ISO-8601 string at the query
+   * boundary (date props are stored as ISO strings); an ISO string may be
+   * passed directly. Omit for `IS NULL` / `IS NOT NULL` operators.
+   */
+  date?: Date | string | null;
   comparison_operator: ComparisonOperator;
 }
 
@@ -213,7 +219,14 @@ function appendDateFilters(
         dateFilter.comparison_operator !== ComparisonOperators.is_null &&
         dateFilter.comparison_operator !== ComparisonOperators.is_not_null
       ) {
-        filterParams[`${paramPrefix}_${index}`] = dateFilter.date ?? null;
+        // Date properties are persisted as ISO-8601 strings (serializeForCypher,
+        // the write-side serializer). The comparison param must go through the
+        // SAME path: a raw JS Date makes the driver send a Neo4j DateTime, and
+        // `string <op> datetime` is a type mismatch that silently matches
+        // nothing. ISO-8601 UTC strings compare lexicographically in
+        // chronological order, so string comparison is correct.
+        filterParams[`${paramPrefix}_${index}`] =
+          serializeForCypher(dateFilter.date) ?? null;
       }
 
       andQueries.push(

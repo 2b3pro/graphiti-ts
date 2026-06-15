@@ -80,6 +80,7 @@ import {
   type BulkEmbeddingOptions,
   type RawEpisode
 } from './maintenance/bulk-utils';
+import { serializeForCypher } from './utils/serialization';
 
 export interface GraphitiOptions {
   driver: GraphDriver;
@@ -1442,7 +1443,9 @@ export class Graphiti {
       }
       if (filter.older_than !== undefined) {
         whereClauses.push('e.created_at < $older_than');
-        params.older_than = filter.older_than;
+        // created_at is stored as an ISO string; a raw Date param serializes to
+        // a Neo4j DateTime and `string < datetime` matches nothing (no-op deprecate).
+        params.older_than = serializeForCypher(filter.older_than);
       }
       if (filter.group_id !== undefined) {
         whereClauses.push('e.group_id = $group_id');
@@ -1475,7 +1478,10 @@ export class Graphiti {
         setClauses.push('e.deprecation_reason = $deprecation_reason');
         params.deprecation_reason = options.reason;
       }
-      params.deprecated_at = deprecatedAt;
+      // Write as an ISO string to match how invalid_at/expired_at are stored
+      // everywhere else (serializeForCypher). A raw Date writes a Neo4j DateTime,
+      // which then fails string comparisons in searchAsOf and friends.
+      params.deprecated_at = serializeForCypher(deprecatedAt);
 
       const result = await this.driver.executeQuery<{ count: unknown }>(
         `MATCH (source:Entity)-[e:RELATES_TO]->(target:Entity)
@@ -1718,10 +1724,15 @@ export class Graphiti {
         valid_at: [[
           { date: asOfDate, comparison_operator: '<=' },
         ]],
-        invalid_at: [[
-          { date: asOfDate, comparison_operator: '>' },
-          { comparison_operator: 'IS NULL' },
-        ]],
+        // invalid_at must be OR-grouped: an edge is current as of `asOfDate`
+        // if it was invalidated AFTER that date OR has never been invalidated.
+        // These belong in SEPARATE outer (OR) groups — packing them in one
+        // inner array AND-joins them into `(invalid_at > d AND invalid_at IS NULL)`,
+        // a contradiction that matches nothing.
+        invalid_at: [
+          [{ date: asOfDate, comparison_operator: '>' }],
+          [{ comparison_operator: 'IS NULL' }],
+        ],
       }),
     });
   }

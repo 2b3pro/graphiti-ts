@@ -3342,6 +3342,68 @@ describe('Graphiti.deprecateEdges', () => {
   test('has deprecateEdges method', () => {
     expect(typeof Graphiti.prototype.deprecateEdges).toBe('function');
   });
+
+  // Regression: date params/writes must be ISO strings, not JS Dates. Date
+  // props are stored as strings (serializeForCypher); a raw Date serializes to
+  // a Neo4j DateTime and `string <op> datetime` silently matches nothing —
+  // making older_than a no-op and poisoning invalid_at for future reads.
+  function buildGraphiti() {
+    const driver = new FakeDriver(new FakeTransaction());
+    const graphiti = new Graphiti({
+      driver,
+      llm_client: null,
+      embedder: new FakeEmbedder([1, 0]),
+      cross_encoder: null,
+    });
+    return { driver, graphiti };
+  }
+
+  test('older_than filter param is serialized to an ISO string', async () => {
+    const { driver, graphiti } = buildGraphiti();
+    await graphiti.deprecateEdges(
+      { older_than: new Date('2026-01-01T00:00:00.000Z') },
+      { dryRun: true }
+    );
+    const call = driver.calls.find((c) => c.cypherQuery.includes('$older_than'));
+    expect(call).toBeDefined();
+    const older = (call!.options as { params: Record<string, unknown> }).params.older_than;
+    expect(typeof older).toBe('string');
+    expect(older).toBe('2026-01-01T00:00:00.000Z');
+    expect(older instanceof Date).toBe(false);
+  });
+
+  test('deprecated_at write param is serialized to an ISO string', async () => {
+    const { driver, graphiti } = buildGraphiti();
+    await graphiti.deprecateEdges(
+      { group_id: 'g' },
+      { deprecated_at: new Date('2026-02-02T03:04:05.000Z') }
+    );
+    const call = driver.calls.find(
+      (c) => c.cypherQuery.includes('SET') && c.cypherQuery.includes('invalid_at')
+    );
+    expect(call).toBeDefined();
+    const dep = (call!.options as { params: Record<string, unknown> }).params.deprecated_at;
+    expect(typeof dep).toBe('string');
+    expect(dep).toBe('2026-02-02T03:04:05.000Z');
+  });
+});
+
+describe('Graphiti.retrieveEpisodes', () => {
+  test('reference_time param is serialized to an ISO string', async () => {
+    const driver = new FakeDriver(new FakeTransaction());
+    const graphiti = new Graphiti({
+      driver,
+      llm_client: null,
+      embedder: new FakeEmbedder([1, 0]),
+      cross_encoder: null,
+    });
+    await graphiti.retrieveEpisodes(['g'], 10, new Date('2026-03-03T00:00:00.000Z'));
+    const call = driver.calls.find((c) => c.cypherQuery.includes('$reference_time'));
+    expect(call).toBeDefined();
+    const ref = (call!.options as { params: Record<string, unknown> }).params.reference_time;
+    expect(typeof ref).toBe('string');
+    expect(ref).toBe('2026-03-03T00:00:00.000Z');
+  });
 });
 
 function graphitiCrossEncoderScore(query: string, passage: string): number {
