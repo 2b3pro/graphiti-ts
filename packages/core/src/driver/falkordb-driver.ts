@@ -160,10 +160,11 @@ export class FalkorDriver extends BaseGraphDriver {
     await graph.createNodeRangeIndex('Episodic', 'uuid');
     await graph.createNodeRangeIndex('Entity', 'group_id');
     await graph.createNodeRangeIndex('Episodic', 'group_id');
-    await graph.createNodeFulltextIndex('Entity', 'name');
-    await graph.createNodeFulltextIndex('Episodic', 'name');
+    await graph.createNodeFulltextIndex('Entity', 'name', 'summary');
+    await graph.createNodeFulltextIndex('Episodic', 'name', 'content', 'source_description');
+    await graph.createNodeFulltextIndex('Community', 'name', 'summary');
     await graph.createEdgeRangeIndex('RELATES_TO', 'uuid');
-    await graph.createEdgeFulltextIndex('RELATES_TO', 'name');
+    await graph.createEdgeFulltextIndex('RELATES_TO', 'name', 'fact');
   }
 }
 

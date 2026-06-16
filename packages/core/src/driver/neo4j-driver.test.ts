@@ -51,6 +51,36 @@ describe('Neo4jDriver', () => {
     });
   });
 
+  test('creates fulltext indexes for node and edge lexical search', async () => {
+    const queries: string[] = [];
+
+    const driver = new Neo4jDriver(
+      {
+        uri: 'bolt://localhost:7687',
+        user: 'neo4j',
+        password: 'test',
+        database: 'neo4j'
+      },
+      {
+        async executeQuery(query) {
+          queries.push(query);
+          return { records: [], keys: [], summary: null };
+        },
+        session(): GraphDriverSession {
+          return new FakeSession();
+        },
+        async close() {},
+        async verifyConnectivity() {}
+      }
+    );
+
+    await driver.buildIndicesAndConstraints();
+
+    const fulltext = queries.filter((q) => q.includes('FULLTEXT INDEX'));
+    expect(fulltext.some((q) => q.includes('node_name_and_summary') && q.includes('n.name') && q.includes('n.summary'))).toBeTrue();
+    expect(fulltext.some((q) => q.includes('edge_name_and_fact') && q.includes('e.name') && q.includes('e.fact'))).toBeTrue();
+  });
+
   test('uses fallback transaction for generic sessions', async () => {
     const session = new FakeSession();
 

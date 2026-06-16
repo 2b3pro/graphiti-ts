@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.2.7
+
+### Real fulltext (BM25) search — the lexical leg now uses a relevance-ranked index
+
+The `bm25` search method was never backed by a fulltext index. `buildIndicesAndConstraints()` created no fulltext index at all, so the "bm25" leg silently degraded to a `toLower(...) CONTAINS $query` substring scan ordered `name ASC`. Two consequences: a multi-word query matched only as a **contiguous substring** (so `"Advisorium is"` and `"Advisorium"` returned different candidate sets — the former accidentally precise because fact summaries are templated `"X is Y"`), and results were **alphabetical, not relevance-ranked**, so the most relevant node could sink out of the top-N before reranking. The Lucene-sanitizing helper `buildFulltextQuery()` existed but was dead code.
+
+- **Fulltext indexes are now created.** `Neo4jDriver.buildIndicesAndConstraints()` creates `node_name_and_summary`, `edge_name_and_fact`, `episode_content`, and `community_name` (Neo4j auto-populates them over existing data). `FalkorDriver` expands its previously name-only fulltext indexes to cover `summary`/`fact`/`content`/`source_description` and adds a `Community` index.
+- **The lexical leg queries the index.** Node/edge/episode/community fulltext searches on both backends now call the fulltext procedure (`db.index.fulltext.queryNodes`/`queryRelationships` on Neo4j, `db.idx.fulltext.*` on FalkorDB) with the query run through the resurrected `buildFulltextQuery()` (Lucene-sanitized), ordered by relevance `score` instead of `name`. A trailing stopword like `is` no longer reshuffles results.
+- **Safe by construction.** Each method falls back to the prior `CONTAINS` scan if the fulltext index is missing (Neo4j: narrow missing-index catch; FalkorDB: broad catch → degrade), so graphs that predate this change keep working until their indexes are (re)built. Blank/whitespace queries short-circuit to `[]` without a DB round-trip.
+- **Note (FalkorDB):** the FalkorDB fulltext path is unit-tested for query construction but unverified against a live FalkorDB instance; the `CONTAINS` fallback bounds the worst case to prior behavior.
+
 ## v0.2.6
 
 ### Wire epistemic domain model into the default runtime path (roadmap Phase 1)

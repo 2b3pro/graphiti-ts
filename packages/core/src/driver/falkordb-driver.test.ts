@@ -47,6 +47,25 @@ describe('FalkorDriver', () => {
     expect(graph.indexCalls).toContain('edge-range:RELATES_TO:uuid');
   });
 
+  test('creates fulltext indexes covering the fields used by lexical search', async () => {
+    const graph = new FakeGraph();
+    const driver = new FalkorDriver(
+      {
+        host: 'localhost',
+        port: 6379,
+        database: 'default_db'
+      },
+      new FakeFalkorClient(graph)
+    );
+
+    await driver.buildIndicesAndConstraints();
+
+    expect(graph.indexCalls).toContain('node-fulltext:Entity:name,summary');
+    expect(graph.indexCalls).toContain('edge-fulltext:RELATES_TO:name,fact');
+    expect(graph.indexCalls).toContain('node-fulltext:Episodic:name,content,source_description');
+    expect(graph.indexCalls).toContain('node-fulltext:Community:name,summary');
+  });
+
   test('returns a session backed by the selected graph', async () => {
     const graph = new FakeGraph();
     const driver = new FalkorDriver(
