@@ -262,15 +262,11 @@ Cross-encoder reranking improves search result relevance.
 
 ## Configuration
 
-Copy the sample config and edit for your environment:
+`@graphiti/core` is configured **programmatically** — settings are passed to the `Graphiti` constructor as a typed overrides object (see below). The library does not currently read a config file.
 
-```bash
-cp config.sample.yaml config.yaml
-```
+[`config.sample.yaml`](config.sample.yaml) documents the intended config shape (LLM fallback chains, embedding providers, reranker configuration, search defaults, and quality gates) for a deployment-level YAML loader. **That loader is not yet implemented in this repo** — treat the sample as a reference for the config shape, and supply config programmatically for now.
 
-See [`config.sample.yaml`](config.sample.yaml) for all available settings including LLM fallback chains, embedding providers, reranker configuration, search defaults, and quality gates.
-
-For library consumers constructing `Graphiti` directly, the core also supports policy-level runtime config:
+For library consumers constructing `Graphiti` directly, the core supports policy-level runtime config:
 
 ```typescript
 const graphiti = new Graphiti({

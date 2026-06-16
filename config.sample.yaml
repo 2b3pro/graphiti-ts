@@ -1,6 +1,11 @@
 # Graphiti Configuration (Sample)
 # Copy to config.yaml and adjust values for your environment.
-# Read by config.ts at module load time. Changes take effect on next client creation.
+#
+# NOTE: The @graphiti/core library does NOT yet read this file. There is no
+# YAML loader in the codebase — config is passed programmatically to the
+# Graphiti constructor as a typed overrides object. This sample documents the
+# intended config shape for a deployment-level loader that has not been
+# implemented here. (TODO: wire up a file-based loader; decide search path.)
 #
 # version: 1.0.0
 
