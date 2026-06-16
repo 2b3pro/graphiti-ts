@@ -12,6 +12,48 @@ const groupIdsSchema = z
 	.optional()
 	.describe('Optional group ID or list of group IDs to filter');
 
+export interface AddMemoryInput {
+	name: string;
+	episode_body: string;
+	group_id?: string | null;
+	source?: 'text' | 'json' | 'message';
+	source_description?: string | null;
+	uuid?: string | null;
+}
+
+export async function addMemoryToGraphiti(
+	graphiti: Pick<Graphiti, 'addEpisodeFull'>,
+	config: McpServerConfig,
+	input: AddMemoryInput,
+) {
+	const effectiveGroupId = input.group_id ?? config.default_group_id;
+
+	try {
+		await graphiti.addEpisodeFull({
+			name: input.name,
+			episode_body: input.episode_body,
+			group_id: effectiveGroupId,
+			source: input.source ?? 'text',
+			source_description: input.source_description ?? '',
+			reference_time: new Date(),
+			uuid: input.uuid ?? null,
+		});
+		return {
+			content: [
+				{
+					type: 'text' as const,
+					text: `Episode '${input.name}' added successfully to group '${effectiveGroupId}'`,
+				},
+			],
+		};
+	} catch (error) {
+		return {
+			content: [{ type: 'text' as const, text: `Error adding episode: ${String(error)}` }],
+			isError: true,
+		};
+	}
+}
+
 export function createGraphitiMcpServer(graphiti: Graphiti, config: McpServerConfig): McpServer {
 	const server = new McpServer({
 		name: 'graphiti',
@@ -35,35 +77,16 @@ export function createGraphitiMcpServer(graphiti: Graphiti, config: McpServerCon
 			uuid: z.string().optional().describe('Optional UUID for the episode'),
 		},
 		async ({ name, episode_body, group_id, source, source_description, uuid }) => {
-			const effectiveGroupId = group_id ?? config.default_group_id;
-			const episode: EpisodicNode = {
-				uuid: uuid ?? crypto.randomUUID(),
+			const input: AddMemoryInput = {
 				name,
-				content: episode_body,
-				group_id: effectiveGroupId,
-				source: (source ?? 'text') as EpisodicNode['source'],
-				source_description: source_description ?? '',
-				labels: [],
-				created_at: new Date(),
-				entity_edges: [],
+				episode_body,
 			};
+			if (group_id !== undefined) input.group_id = group_id;
+			if (source !== undefined) input.source = source;
+			if (source_description !== undefined) input.source_description = source_description;
+			if (uuid !== undefined) input.uuid = uuid;
 
-			try {
-				await graphiti.ingestEpisode({ episode });
-				return {
-					content: [
-						{
-							type: 'text' as const,
-							text: `Episode '${name}' added successfully to group '${effectiveGroupId}'`,
-						},
-					],
-				};
-			} catch (error) {
-				return {
-					content: [{ type: 'text' as const, text: `Error adding episode: ${String(error)}` }],
-					isError: true,
-				};
-			}
+			return addMemoryToGraphiti(graphiti, config, input);
 		},
 	);
 

@@ -21,10 +21,10 @@ This port tracks the upstream provider coverage (OpenAI, Anthropic, Gemini, Groq
 | **Staleness scoring** | Query-time freshness signal (0.0–1.0) based on sigmoid age decay, reinforcement count, domain velocity, and recency. Never stored — computed on the fly. |
 | **Temporal search** | `searchAsOf(query, date)` for point-in-time graph queries against the bi-temporal model. |
 | **Jina reranker** | Cross-encoder reranking via the Jina Reranker API, alongside the ported BGE/OpenAI/Gemini rerankers. |
-| **YAML-driven config** | Centralized `config.yaml` with fallback chains for LLM, embedder, and reranker providers. |
+| **Typed programmatic config** | Runtime policy is passed to `Graphiti({ config })`; `config.sample.yaml` documents the shape for deployment loaders. |
 | **GDS Leiden community detection** | Automatic Neo4j GDS integration for community detection. Uses Leiden algorithm (milliseconds, in-database) when GDS plugin is installed; falls back to application-level label propagation when not. Batched LLM summarization reduces community naming from N-1 calls per community to a few batched calls total. |
 | **CJK-aware dedup** | Adaptive MinHash shingle sizes (n=2 for CJK scripts, n=3 for Latin) with proper Unicode range detection. |
-| **Conditional edges** | `EdgeCondition` type on entity edges — facts that are only true under specific conditions. Extraction prompt detects conditional language. Condition-aware search filters. |
+| **Conditional edges** | `EdgeCondition` type on entity edges — facts that are only true under specific conditions. Extraction prompt detects conditional language and persists conditions on edges. Condition-aware filter helpers (`evaluateConditions`) available for post-query filtering. |
 | **Contextual anchoring** | `anchored_by`/`anchors` fields tracking interpretive dependencies. `computeAnchorConfidence()` for graduated confidence erosion when anchors are removed. Multi-anchor `AnchoredInterpretation` for lens-based search. |
 | **Deprecation confidence gate** | Evidence-weighted contradiction resolution. Well-supported facts resist deprecation from weak contradictions. Four-tier scoring: ignore, dispute, deprecate, replace. |
 

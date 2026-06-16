@@ -3,7 +3,7 @@ import { utcNow } from '@graphiti/shared';
 
 import type { EntityEdge, EpisodicEdge } from '../domain/edges';
 import type { EntityNode, EpisodicNode } from '../domain/nodes';
-import { addNodesAndEdgesBulk } from './bulk-utils';
+import { addNodesAndEdgesBulk, dedupeEdgesBulk } from './bulk-utils';
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -271,5 +271,59 @@ describe('addNodesAndEdgesBulk', () => {
 
     await addNodesAndEdgesBulk(driver, [], [], [], [], embedder);
     expect(queries.length).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// dedupeEdgesBulk
+// ---------------------------------------------------------------------------
+
+describe('dedupeEdgesBulk', () => {
+  test('preserves source-target candidate behavior across relation names', async () => {
+    const firstEpisode = makeEpisode('ep1', 'Alice uses Acme');
+    const secondEpisode = makeEpisode('ep2', 'Alice prefers Acme');
+    const firstEdge = makeEntityEdge('e1', 'alice', 'acme', 'Alice uses Acme');
+    const secondEdge = makeEntityEdge('e2', 'alice', 'acme', 'Alice uses Acme');
+    firstEdge.name = 'USES';
+    secondEdge.name = 'PREFERS';
+    firstEdge.fact_embedding = [1, 0];
+    secondEdge.fact_embedding = [1, 0];
+
+    const result = await dedupeEdgesBulk(
+      {
+        llm_client: {
+          model: 'test',
+          small_model: 'test-small',
+          setTracer: () => {},
+          generateText: async () => JSON.stringify({ duplicate_facts: [], contradicted_facts: [] })
+        },
+        embedder: {
+          create: async () => [1, 0]
+        },
+        driver: makeMockDriver().driver,
+        cross_encoder: {
+          rank: async () => []
+        },
+        tracer: {
+          startSpan: () => ({
+            span: {
+              addAttributes: () => {},
+              setStatus: () => {},
+              recordException: () => {}
+            },
+            close: () => {}
+          })
+        }
+      } as any,
+      [[firstEdge], [secondEdge]],
+      [
+        [firstEpisode, []],
+        [secondEpisode, []]
+      ],
+      {}
+    );
+
+    expect(result.ep1?.[0]?.uuid).toBe('e1');
+    expect(result.ep2?.[0]?.uuid).toBe('e1');
   });
 });

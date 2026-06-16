@@ -24,6 +24,12 @@ import {
 	type DeprecationGateConfig,
 	resolveContradiction as resolveContradictionGate,
 } from '../domain/deprecation-gate';
+import {
+	type ConditionRelationship,
+	type ConditionState,
+	type EdgeCondition,
+	validateConditions,
+} from '../domain/conditions';
 import type { EntityEdge, EpisodicEdge } from '../domain/edges';
 import { computeEvidenceWeight } from '../domain/epistemic';
 import type { EntityNode, EpisodicNode } from '../domain/nodes';
@@ -49,6 +55,73 @@ function buildEdgeContext(clients: GraphitiClients): GenerateResponseContext {
 		cache: clients.cache ?? null,
 		modelRouting: clients.modelRouting ?? null,
 	};
+}
+
+function recordConditionDrop(
+	tracer: Tracer,
+	reason: string,
+	groupId: string,
+	relationType: string,
+): void {
+	const scope = tracer.startSpan('graphiti.metric.condition_drop');
+	try {
+		scope.span.addAttributes({
+			'metric.name': 'condition_drop',
+			'metric.value': 1,
+			'condition_drop.reason': reason,
+			'condition_drop.group_id': groupId,
+			'condition_drop.relation_type': relationType,
+		});
+		scope.span.setStatus('ok');
+	} finally {
+		scope.close();
+	}
+}
+
+function mapExtractedConditions(
+	edgeData: ExtractedEdge,
+	nameToNode: Map<string, EntityNode>,
+	clients: GraphitiClients,
+	groupId: string,
+): EdgeCondition[] | null {
+	if (edgeData.conditions == null) return null;
+	if (!Array.isArray(edgeData.conditions)) {
+		recordConditionDrop(clients.tracer, 'invalid_conditions_container', groupId, edgeData.relation_type);
+		return null;
+	}
+
+	const conditions: EdgeCondition[] = [];
+
+	for (const rawCondition of edgeData.conditions) {
+		if (!rawCondition || typeof rawCondition !== 'object') {
+			recordConditionDrop(clients.tracer, 'invalid_condition_shape', groupId, edgeData.relation_type);
+			continue;
+		}
+
+		const entityName =
+			typeof rawCondition.entity_name === 'string' ? rawCondition.entity_name.trim() : '';
+		const conditionNode = nameToNode.get(entityName);
+		if (!conditionNode) {
+			recordConditionDrop(clients.tracer, 'unknown_condition_entity', groupId, edgeData.relation_type);
+			continue;
+		}
+
+		const condition: EdgeCondition = {
+			entity_uuid: conditionNode.uuid,
+			entity_name: conditionNode.name,
+			required_state: rawCondition.required_state as ConditionState,
+			relationship: rawCondition.relationship as ConditionRelationship,
+		};
+
+		try {
+			validateConditions([condition]);
+			conditions.push(condition);
+		} catch {
+			recordConditionDrop(clients.tracer, 'invalid_condition_shape', groupId, edgeData.relation_type);
+		}
+	}
+
+	return conditions.length > 0 ? conditions : null;
 }
 
 /** Call generateResponse on the client, falling back to default implementation if not provided. */
@@ -182,6 +255,7 @@ export async function extractEdges(
 
 		let validAt: Date | null = null;
 		let invalidAt: Date | null = null;
+		const conditions = mapExtractedConditions(edgeData, nameToNode, clients, groupId);
 
 		if (edgeData.valid_at) {
 			try {
@@ -210,6 +284,7 @@ export async function extractEdges(
 			created_at: now,
 			valid_at: validAt,
 			invalid_at: invalidAt,
+			conditions,
 		});
 	}
 

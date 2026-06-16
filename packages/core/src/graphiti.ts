@@ -225,6 +225,7 @@ export class Graphiti {
   readonly store_raw_episode_content: boolean;
   readonly max_coroutines: number | null;
   readonly config: GraphitiConfig;
+  private addEpisodeFullFallbackWarned = false;
 
   constructor(options: GraphitiOptions) {
     this.driver = options.driver;
@@ -358,6 +359,96 @@ export class Graphiti {
     } catch {
       // Silently handle telemetry errors
     }
+  }
+
+  /**
+   * Capabilities that addEpisodeFull supports but ingestEpisode does not. When the
+   * full pipeline degrades to ingestEpisode, any of these supplied on the input are
+   * silently lost, so the fallback must disclose exactly which ones were dropped
+   * rather than claiming a clean fallback.
+   */
+  private droppedFallbackCapabilities(input: AddEpisodeFullInput): string[] {
+    const dropped: string[] = [];
+    if (input.entity_types != null) dropped.push('entity_types');
+    if (input.excluded_entity_types != null) dropped.push('excluded_entity_types');
+    if (input.edge_types != null) dropped.push('edge_types');
+    if (input.edge_type_map != null) dropped.push('edge_type_map');
+    if (input.previous_episode_uuids != null) dropped.push('previous_episode_uuids');
+    if (input.saga != null) dropped.push('saga');
+    if (input.saga_previous_episode_uuid != null) dropped.push('saga_previous_episode_uuid');
+    return dropped;
+  }
+
+  private warnAddEpisodeFullFallback(droppedCapabilities: string[]): void {
+    // Emit the metric on every fallback so occurrences can be counted accurately;
+    // gate only the console warning behind the once-flag to avoid log spam.
+    const scope = this.tracer.startSpan('graphiti.metric.add_episode_full_fallback');
+    try {
+      scope.span.addAttributes({
+        'metric.name': 'add_episode_full_fallback',
+        'metric.value': 1,
+        'fallback.reason': 'missing_clients',
+        'fallback.dropped_capabilities': droppedCapabilities.join(',') || 'none',
+        'client.llm_configured': this.llm_client !== null,
+        'client.embedder_configured': this.embedder !== null,
+        'client.cross_encoder_configured': this.cross_encoder !== null
+      });
+      scope.span.setStatus('ok');
+    } finally {
+      scope.close();
+    }
+
+    if (this.addEpisodeFullFallbackWarned) return;
+    this.addEpisodeFullFallbackWarned = true;
+
+    const droppedNote =
+      droppedCapabilities.length > 0
+        ? ` Dropped capabilities not supported by ingestEpisode: ${droppedCapabilities.join(', ')}.`
+        : '';
+    console.warn(
+      `[graphiti-ts] addEpisodeFull falling back to ingestEpisode because LLM client, embedder, and cross encoder are not all configured.${droppedNote}`
+    );
+  }
+
+  private async addEpisodeFullFallback(input: AddEpisodeFullInput): Promise<AddEpisodeResult> {
+    this.warnAddEpisodeFullFallback(this.droppedFallbackCapabilities(input));
+
+    const groupId = input.group_id ?? this.driver.default_group_id;
+    const driver = this.getScopedDriver(groupId);
+    const nodeNamespace = this.getNodeNamespace(driver);
+    const now = utcNow();
+    let episode: EpisodicNode | null = null;
+
+    if (input.uuid) {
+      try {
+        episode = await nodeNamespace.episode.getByUuid(input.uuid);
+      } catch {
+        episode = null;
+      }
+    }
+
+    episode ??= {
+      uuid: input.uuid ?? crypto.randomUUID(),
+      name: input.name,
+      group_id: groupId,
+      labels: [],
+      source: input.source ?? EpisodeTypes.message,
+      content: input.episode_body,
+      source_description: input.source_description,
+      created_at: now,
+      valid_at: input.reference_time,
+      entity_edges: []
+    };
+
+    const ingestInput: IngestEpisodeInput = { episode };
+    if (input.update_communities !== undefined) {
+      ingestInput.update_communities = input.update_communities;
+    }
+    if (input.custom_extraction_instructions != null) {
+      ingestInput.extraction_instructions = input.custom_extraction_instructions;
+    }
+
+    return this.ingestEpisode(ingestInput);
   }
 
   async close(): Promise<void> {
@@ -631,7 +722,7 @@ export class Graphiti {
    */
   async addEpisodeFull(input: AddEpisodeFullInput): Promise<AddEpisodeResult> {
     if (!this.clients) {
-      throw new Error('LLM client, embedder, and cross encoder are all required for addEpisodeFull');
+      return this.addEpisodeFullFallback(input);
     }
 
     const now = utcNow();

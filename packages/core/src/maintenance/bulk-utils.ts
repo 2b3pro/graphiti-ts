@@ -422,20 +422,26 @@ export async function dedupeEdgesBulk(
   // Find similar candidates and resolve
   const dedupeTuples: Array<[EpisodicNode, EntityEdge, EntityEdge[], number[]]> = [];
   const allEdges = extractedEdges.flat();
+  const edgePairBuckets = new Map<string, EntityEdge[]>();
+  const wordSetsByEdgeUuid = new Map<string, Set<string>>();
+
+  for (const edge of allEdges) {
+    const pairKey = `${edge.source_node_uuid}|${edge.target_node_uuid}`;
+    const bucket = edgePairBuckets.get(pairKey) ?? [];
+    bucket.push(edge);
+    edgePairBuckets.set(pairKey, bucket);
+    wordSetsByEdgeUuid.set(edge.uuid, new Set(edge.fact.toLowerCase().split(/\s+/)));
+  }
 
   for (let i = 0; i < extractedEdges.length; i++) {
     const episode = episodeTuples[i]![0];
     for (const edge of extractedEdges[i]!) {
       const candidates: EntityEdge[] = [];
       const candidateScores: number[] = [];
-      for (const existing of allEdges) {
+      const pairKey = `${edge.source_node_uuid}|${edge.target_node_uuid}`;
+      const edgeWords = wordSetsByEdgeUuid.get(edge.uuid) ?? new Set<string>();
+      for (const existing of edgePairBuckets.get(pairKey) ?? []) {
         if (edge.uuid === existing.uuid) continue;
-        if (
-          edge.source_node_uuid !== existing.source_node_uuid ||
-          edge.target_node_uuid !== existing.target_node_uuid
-        ) {
-          continue;
-        }
 
         // Cosine similarity (compute first so we can record the score)
         let cosineSim = 0;
@@ -447,8 +453,7 @@ export async function dedupeEdgesBulk(
         }
 
         // Word overlap check
-        const edgeWords = new Set(edge.fact.toLowerCase().split(/\s+/));
-        const existingWords = new Set(existing.fact.toLowerCase().split(/\s+/));
+        const existingWords = wordSetsByEdgeUuid.get(existing.uuid) ?? new Set<string>();
         let hasOverlap = false;
         for (const w of edgeWords) {
           if (existingWords.has(w)) {

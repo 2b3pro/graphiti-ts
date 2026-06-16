@@ -174,6 +174,51 @@ describe('Graphiti', () => {
     expect(transaction.committed).toBeFalse();
   });
 
+  test('addEpisodeFull falls back to ingestEpisode once when the cross encoder is missing', async () => {
+    const transaction = new FakeTransaction();
+    const driver = new FakeDriver(transaction);
+    const extractor = new FakeEpisodeExtractor();
+    const graphiti = new Graphiti({
+      driver,
+      episode_extractor: extractor,
+      llm_client: null,
+      embedder: null,
+      cross_encoder: null
+    });
+    const warnings: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => {
+      warnings.push(args.map(String).join(' '));
+    };
+
+    try {
+      const firstResult = await graphiti.addEpisodeFull({
+        name: 'episode-full-fallback-1',
+        episode_body: 'Alice knows Bob',
+        source_description: 'chat',
+        reference_time: utcNow(),
+        source: 'text',
+        group_id: 'group'
+      });
+      const secondResult = await graphiti.addEpisodeFull({
+        name: 'episode-full-fallback-2',
+        episode_body: 'Alice knows Bob',
+        source_description: 'chat',
+        reference_time: utcNow(),
+        source: 'text',
+        group_id: 'group'
+      });
+
+      expect(firstResult.nodes.map((node) => node.name)).toEqual(['Alice', 'Bob']);
+      expect(secondResult.edges.map((edge) => edge.name)).toEqual(['knows']);
+      expect(extractor.calls).toHaveLength(2);
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain('falling back to ingestEpisode');
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+
   test('uses the model-backed extractor by default when an llm client is configured', async () => {
     const transaction = new FakeTransaction();
     const driver = new FakeDriver(transaction);

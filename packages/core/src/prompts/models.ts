@@ -31,6 +31,12 @@ export interface SummarizedEntities {
 
 // --- Extract Edges ---
 
+export interface ExtractedEdgeCondition {
+  entity_name: string;
+  required_state: 'active' | 'inactive' | 'any';
+  relationship: 'requires' | 'blocked_by';
+}
+
 export interface ExtractedEdge {
   source_entity_name: string;
   target_entity_name: string;
@@ -38,6 +44,7 @@ export interface ExtractedEdge {
   fact: string;
   valid_at: string | null;
   invalid_at: string | null;
+  conditions?: ExtractedEdgeCondition[] | null;
 }
 
 export interface ExtractedEdges {

@@ -4,7 +4,9 @@ import { utcNow } from '@graphiti/shared';
 import type { LLMClient } from '../contracts';
 import type { EntityEdge, EpisodicEdge } from '../domain/edges';
 import type { EntityNode, EpisodicNode } from '../domain/nodes';
+import { mapEntityEdge } from '../namespaces/edges';
 import type { Message } from '../prompts/types';
+import { serializeForCypher } from '../utils/serialization';
 import { detectNegation } from './negation';
 
 import {
@@ -78,7 +80,33 @@ function makeMockLLMClient(responses: Record<string, unknown>[]): LLMClient {
   };
 }
 
-function makeMockClients(llmResponses: Record<string, unknown>[]) {
+function makeRecordingTracer() {
+  const spans: Array<{ name: string; attributes: Record<string, unknown> }> = [];
+  return {
+    spans,
+    tracer: {
+      startSpan: (name: string) => {
+        const spanRecord = { name, attributes: {} as Record<string, unknown> };
+        spans.push(spanRecord);
+        return {
+          span: {
+            addAttributes: (attributes: Record<string, unknown>) => {
+              spanRecord.attributes = { ...spanRecord.attributes, ...attributes };
+            },
+            setStatus: () => {},
+            recordException: () => {}
+          },
+          close: () => {}
+        };
+      }
+    }
+  };
+}
+
+function makeMockClients(
+  llmResponses: Record<string, unknown>[],
+  tracer?: ReturnType<typeof makeRecordingTracer>['tracer']
+) {
   return {
     llm_client: makeMockLLMClient(llmResponses),
     embedder: {
@@ -99,7 +127,8 @@ function makeMockClients(llmResponses: Record<string, unknown>[]) {
       deleteAllIndexes: async () => {},
       buildIndicesAndConstraints: async () => {},
       executeQuery: async () => ({ records: [] })
-    }
+    },
+    tracer: tracer ?? makeRecordingTracer().tracer
   } as any;
 }
 
@@ -301,6 +330,141 @@ describe('extractEdges', () => {
     expect(edges[0]!.invalid_at).toBeInstanceOf(Date);
   });
 
+  test('maps extracted condition entity names to condition UUIDs', async () => {
+    const clients = makeMockClients([
+      {
+        edges: [
+          {
+            source_entity_name: 'Alice',
+            target_entity_name: 'Acme',
+            relation_type: 'USES',
+            fact: 'Alice uses Acme when Grandier is active',
+            valid_at: null,
+            invalid_at: null,
+            conditions: [
+              {
+                entity_name: 'Grandier',
+                required_state: 'active',
+                relationship: 'requires'
+              }
+            ]
+          }
+        ]
+      }
+    ]);
+
+    const nodes = [
+      makeNode('n1', 'Alice'),
+      makeNode('n2', 'Acme'),
+      makeNode('n3', 'Grandier')
+    ];
+    const edges = await extractEdges(clients, makeEpisode(), nodes, [], {}, 'g1');
+
+    expect(edges).toHaveLength(1);
+    expect(edges[0]!.conditions).toEqual([
+      {
+        entity_uuid: 'n3',
+        entity_name: 'Grandier',
+        required_state: 'active',
+        relationship: 'requires'
+      }
+    ]);
+  });
+
+  test('drops a condition with an unknown entity and keeps the edge', async () => {
+    const recording = makeRecordingTracer();
+    const clients = makeMockClients(
+      [
+        {
+          edges: [
+            {
+              source_entity_name: 'Alice',
+              target_entity_name: 'Acme',
+              relation_type: 'USES',
+              fact: 'Alice uses Acme when Missing is active',
+              valid_at: null,
+              invalid_at: null,
+              conditions: [
+                {
+                  entity_name: 'Missing',
+                  required_state: 'active',
+                  relationship: 'requires'
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      recording.tracer
+    );
+
+    const edges = await extractEdges(
+      clients,
+      makeEpisode(),
+      [makeNode('n1', 'Alice'), makeNode('n2', 'Acme')],
+      [],
+      {},
+      'g1'
+    );
+
+    expect(edges).toHaveLength(1);
+    expect(edges[0]!.conditions).toBeNull();
+    expect(
+      recording.spans.some(
+        (span) =>
+          span.name === 'graphiti.metric.condition_drop' &&
+          span.attributes['condition_drop.reason'] === 'unknown_condition_entity'
+      )
+    ).toBeTrue();
+  });
+
+  test('drops malformed conditions and keeps the edge', async () => {
+    const recording = makeRecordingTracer();
+    const clients = makeMockClients(
+      [
+        {
+          edges: [
+            {
+              source_entity_name: 'Alice',
+              target_entity_name: 'Acme',
+              relation_type: 'USES',
+              fact: 'Alice uses Acme if Grandier is available',
+              valid_at: null,
+              invalid_at: null,
+              conditions: [
+                {
+                  entity_name: 'Grandier',
+                  required_state: 'available',
+                  relationship: 'requires'
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      recording.tracer
+    );
+
+    const edges = await extractEdges(
+      clients,
+      makeEpisode(),
+      [makeNode('n1', 'Alice'), makeNode('n2', 'Acme'), makeNode('n3', 'Grandier')],
+      [],
+      {},
+      'g1'
+    );
+
+    expect(edges).toHaveLength(1);
+    expect(edges[0]!.conditions).toBeNull();
+    expect(
+      recording.spans.some(
+        (span) =>
+          span.name === 'graphiti.metric.condition_drop' &&
+          span.attributes['condition_drop.reason'] === 'invalid_condition_shape'
+      )
+    ).toBeTrue();
+  });
+
   test('handles empty LLM response', async () => {
     const clients = makeMockClients([{ edges: [] }]);
     const edges = await extractEdges(clients, makeEpisode(), [], [], {}, 'g1');
@@ -311,6 +475,36 @@ describe('extractEdges', () => {
     const clients = makeMockClients([{}]);
     const edges = await extractEdges(clients, makeEpisode(), [], [], {}, 'g1');
     expect(edges).toHaveLength(0);
+  });
+
+  test('round-trips serialized edge conditions through the entity edge mapper', () => {
+    const conditions = [
+      {
+        entity_uuid: 'n3',
+        entity_name: 'Grandier',
+        required_state: 'active' as const,
+        relationship: 'requires' as const
+      }
+    ];
+    const serialized = serializeForCypher({ conditions });
+
+    const mapped = mapEntityEdge({
+      uuid: 'e1',
+      group_id: 'g1',
+      source_node_uuid: 'n1',
+      target_node_uuid: 'n2',
+      created_at: utcNow().toISOString(),
+      name: 'USES',
+      fact: 'Alice uses Acme when Grandier is active',
+      fact_embedding: null,
+      episodes: ['ep-1'],
+      expired_at: null,
+      valid_at: null,
+      invalid_at: null,
+      conditions: serialized.conditions
+    });
+
+    expect(mapped.conditions).toEqual(conditions);
   });
 });
 

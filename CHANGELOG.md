@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.2.6
+
+### Wire epistemic domain model into the default runtime path (roadmap Phase 1)
+
+- **Conditional edges now persist end to end.** The extraction prompt already requested `conditions`, but `ExtractedEdge` dropped them at parse time. `extractEdges()` now maps each returned condition's `entity_name` → `entity_uuid` via the existing name-to-node map, validates it with `validateConditions()`, and attaches it to the saved edge (the serialize/read round-trip already handled `EdgeCondition[]`). A condition referencing an unknown entity or with a malformed shape is **dropped while the edge is kept**, and each drop emits a `condition_drop` metric span (`reason`, `group_id`, `relation_type`) for regression visibility. Note: conditions are persisted but not yet auto-applied in public search — `evaluateConditions()` remains a post-query helper (search-time filtering is a follow-up).
+- **MCP `add_memory` now uses the full pipeline.** It routes through `addEpisodeFull()` (custom entity/edge types, edge maps, deprecation gate, conditions) instead of the lighter `ingestEpisode()`. When an LLM client, embedder, and cross encoder are not all configured, `addEpisodeFull()` **degrades gracefully to `ingestEpisode()`** instead of throwing — emitting an `add_episode_full_fallback` metric on every occurrence (rate-limited console warning) that names any richer capabilities (`saga`, `edge_type_map`, custom types, …) silently dropped on the degraded path.
+- **`dedupeEdgesBulk()` no longer scales O(n²).** Candidate edges are pre-bucketed by `(source_uuid, target_uuid)` and fact word-sets are precomputed once per edge, replacing the per-pair rescan and per-comparison word-set rebuild. Behavior-preserving — edges sharing a node-pair across different relation types are still compared as before.
+- **Docs:** README feature table corrected from "YAML-driven config" to "typed programmatic config; `config.sample.yaml` documents the shape for deployment loaders," matching the absence of an in-repo YAML loader.
+
 ## v0.2.5
 
 ### Upstream fix parity and provider hardening
