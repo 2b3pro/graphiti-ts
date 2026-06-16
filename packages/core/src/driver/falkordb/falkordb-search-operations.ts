@@ -12,9 +12,35 @@ import {
   nodeSearchFilterQueryConstructor
 } from '../../search/filters';
 import { rankByCosineSimilarity } from '../../search/ranking';
+import { buildFulltextQuery } from '../../utils/text';
 import { getRecordValue, type RecordLike } from '../../utils/records';
 import type { SearchOperations } from '../operations/search-operations';
 import { ENTITY_EDGE_FIELDS } from '../cypher-fields';
+
+/**
+ * Build the WHERE clause (group + search filters) applied on top of fulltext
+ * index results. Relevance comes from the index score, not a substring predicate.
+ */
+function buildFulltextFilterClause(
+  [filterQueries, filterParams]: [string[], Record<string, unknown>],
+  groupIds: string[] | null | undefined,
+  groupIdField: string
+): { clause: string; params: Record<string, unknown> } {
+  const params: Record<string, unknown> = { ...filterParams };
+  const queries: string[] = [];
+
+  if (groupIds && groupIds.length > 0) {
+    queries.push(`${groupIdField} IN $group_ids`);
+    params.group_ids = groupIds;
+  }
+
+  queries.push(...filterQueries);
+
+  return {
+    clause: queries.length > 0 ? `WHERE ${queries.join(' AND ')}` : '',
+    params
+  };
+}
 
 export class FalkorSearchOperations implements SearchOperations {
   async nodeSimilaritySearch(
@@ -101,6 +127,56 @@ export class FalkorSearchOperations implements SearchOperations {
     groupIds?: string[] | null,
     limit = 10
   ): Promise<EntityNode[]> {
+    const fulltextQuery = buildFulltextQuery(query, groupIds);
+    if (fulltextQuery === '') {
+      return [];
+    }
+
+    const { clause, params } = buildFulltextFilterClause(
+      nodeSearchFilterQueryConstructor(searchFilter, GraphProviders.FALKORDB),
+      groupIds,
+      'n.group_id'
+    );
+
+    try {
+      const result = await driver.executeQuery<RecordLike>(
+        `
+        CALL db.idx.fulltext.queryNodes('Entity', $query) YIELD node, score
+        WITH node AS n, score
+        ${clause}
+        RETURN
+          n.uuid AS uuid,
+          n.name AS name,
+          n.group_id AS group_id,
+          coalesce(n.labels, labels(n)) AS labels,
+          n.created_at AS created_at,
+          n.name_embedding AS name_embedding,
+          n.summary AS summary,
+          n.attributes AS attributes
+        ORDER BY score DESC
+        LIMIT $limit
+      `,
+        {
+          params: { ...params, query: fulltextQuery, limit },
+          routing: 'r'
+        }
+      );
+
+      return result.records.map((record) => mapEntityNode(record));
+    } catch {
+      // FalkorDB fulltext semantics vary by version; degrade to the CONTAINS scan.
+      return this.nodeContainsSearch(driver, query, searchFilter, groupIds, limit);
+    }
+  }
+
+  /** Legacy substring scan retained as a fallback for graphs without the fulltext index. */
+  private async nodeContainsSearch(
+    driver: GraphDriver,
+    query: string,
+    searchFilter: SearchFilters,
+    groupIds: string[] | null | undefined,
+    limit: number
+  ): Promise<EntityNode[]> {
     const { clause, params } = buildNodeSearchWhereClause(query, searchFilter, groupIds);
     const result = await driver.executeQuery<RecordLike>(
       `
@@ -119,10 +195,7 @@ export class FalkorSearchOperations implements SearchOperations {
         LIMIT $limit
       `,
       {
-        params: {
-          ...params,
-          limit
-        },
+        params: { ...params, limit },
         routing: 'r'
       }
     );
@@ -136,6 +209,53 @@ export class FalkorSearchOperations implements SearchOperations {
     searchFilter: SearchFilters,
     groupIds?: string[] | null,
     limit = 10
+  ): Promise<EntityEdge[]> {
+    const fulltextQuery = buildFulltextQuery(query, groupIds);
+    if (fulltextQuery === '') {
+      return [];
+    }
+
+    const { clause, params } = buildFulltextFilterClause(
+      edgeSearchFilterQueryConstructor(searchFilter, GraphProviders.FALKORDB),
+      groupIds,
+      'e.group_id'
+    );
+
+    try {
+      const result = await driver.executeQuery<RecordLike>(
+        `
+        CALL db.idx.fulltext.queryRelationships('RELATES_TO', $query) YIELD relationship, score
+        WITH relationship AS e, startNode(relationship) AS n, endNode(relationship) AS m, score
+        ${clause}
+        RETURN
+          e.uuid AS uuid,
+          e.group_id AS group_id,
+          n.uuid AS source_node_uuid,
+          m.uuid AS target_node_uuid,
+          ${ENTITY_EDGE_FIELDS}
+        ORDER BY score DESC
+        LIMIT $limit
+      `,
+        {
+          params: { ...params, query: fulltextQuery, limit },
+          routing: 'r'
+        }
+      );
+
+      return result.records.map((record) => mapEntityEdge(record));
+    } catch {
+      // FalkorDB fulltext semantics vary by version; degrade to the CONTAINS scan.
+      return this.edgeContainsSearch(driver, query, searchFilter, groupIds, limit);
+    }
+  }
+
+  /** Legacy substring scan retained as a fallback for graphs without the fulltext index. */
+  private async edgeContainsSearch(
+    driver: GraphDriver,
+    query: string,
+    searchFilter: SearchFilters,
+    groupIds: string[] | null | undefined,
+    limit: number
   ): Promise<EntityEdge[]> {
     const { clause, params } = buildEdgeSearchWhereClause(query, searchFilter, groupIds);
     const result = await driver.executeQuery<RecordLike>(
@@ -152,10 +272,7 @@ export class FalkorSearchOperations implements SearchOperations {
         LIMIT $limit
       `,
       {
-        params: {
-          ...params,
-          limit
-        },
+        params: { ...params, limit },
         routing: 'r'
       }
     );
@@ -362,6 +479,52 @@ export class FalkorSearchOperations implements SearchOperations {
     groupIds?: string[] | null,
     limit = 10
   ): Promise<EpisodicNode[]> {
+    const fulltextQuery = buildFulltextQuery(query, groupIds);
+    if (fulltextQuery === '') {
+      return [];
+    }
+
+    const { clause, params } = buildFulltextFilterClause([[], {}], groupIds, 'n.group_id');
+
+    try {
+      const result = await driver.executeQuery<RecordLike>(
+        `
+        CALL db.idx.fulltext.queryNodes('Episodic', $query) YIELD node, score
+        WITH node AS n, score
+        ${clause}
+        RETURN
+          n.uuid AS uuid,
+          n.name AS name,
+          n.group_id AS group_id,
+          coalesce(n.labels, labels(n)) AS labels,
+          n.created_at AS created_at,
+          n.source AS source,
+          n.source_description AS source_description,
+          n.content AS content,
+          n.valid_at AS valid_at,
+          n.entity_edges AS entity_edges
+        ORDER BY score DESC
+        LIMIT $limit
+      `,
+        {
+          params: { ...params, query: fulltextQuery, limit },
+          routing: 'r'
+        }
+      );
+
+      return result.records.map((record) => mapEpisodeNode(record));
+    } catch {
+      return this.episodeContainsSearch(driver, query, groupIds, limit);
+    }
+  }
+
+  /** Legacy substring scan retained as a fallback for graphs without the fulltext index. */
+  private async episodeContainsSearch(
+    driver: GraphDriver,
+    query: string,
+    groupIds: string[] | null | undefined,
+    limit: number
+  ): Promise<EpisodicNode[]> {
     const params: Record<string, unknown> = {
       query_lower: query.toLowerCase(),
       limit
@@ -407,6 +570,47 @@ export class FalkorSearchOperations implements SearchOperations {
     query: string,
     groupIds?: string[] | null,
     limit = 20
+  ): Promise<CommunityNode[]> {
+    const fulltextQuery = buildFulltextQuery(query, groupIds);
+    if (fulltextQuery === '') {
+      return [];
+    }
+
+    const { clause, params } = buildFulltextFilterClause([[], {}], groupIds, 'c.group_id');
+
+    try {
+      const result = await driver.executeQuery<RecordLike>(
+        `
+        CALL db.idx.fulltext.queryNodes('Community', $query) YIELD node, score
+        WITH node AS c, score
+        ${clause}
+        RETURN
+          c.uuid AS uuid,
+          c.name AS name,
+          c.group_id AS group_id,
+          coalesce(c.labels, labels(c)) AS labels,
+          c.created_at AS created_at,
+          c.summary AS summary,
+          c.name_embedding AS name_embedding,
+          c.rank AS rank
+        ORDER BY score DESC
+        LIMIT $limit
+      `,
+        { params: { ...params, query: fulltextQuery, limit }, routing: 'r' }
+      );
+
+      return result.records.map((record) => mapCommunityNode(record));
+    } catch {
+      return this.communityContainsSearch(driver, query, groupIds, limit);
+    }
+  }
+
+  /** Legacy substring scan retained as a fallback for graphs without the fulltext index. */
+  private async communityContainsSearch(
+    driver: GraphDriver,
+    query: string,
+    groupIds: string[] | null | undefined,
+    limit: number
   ): Promise<CommunityNode[]> {
     const params: Record<string, unknown> = {
       query_lower: query.toLowerCase(),

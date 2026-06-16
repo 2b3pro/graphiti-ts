@@ -2669,7 +2669,7 @@ class SearchFakeNeo4jClient {
   async executeQuery<RecordShape = unknown>(
     query: string
   ): Promise<QueryResult<RecordShape>> {
-    if (query.includes('MATCH (n:Entity)-[e:RELATES_TO]->(m:Entity)')) {
+    if (query.includes('MATCH (n:Entity)-[e:RELATES_TO]->(m:Entity)') || query.includes("db.index.fulltext.queryRelationships('edge_name_and_fact'")) {
       return {
         records: [
           {
@@ -2690,7 +2690,7 @@ class SearchFakeNeo4jClient {
       };
     }
 
-    if (query.includes('MATCH (n:Entity)')) {
+    if (query.includes('MATCH (n:Entity)') || query.includes("db.index.fulltext.queryNodes('node_name_and_summary'")) {
       return {
         records: [
           {
@@ -2747,7 +2747,10 @@ class SearchFakeFalkorGraph {
   private async reply<RecordShape>(
     query: string
   ): Promise<{ data?: RecordShape[]; headers?: string[] }> {
-    if (query.includes('MATCH (n:Entity)-[e:RELATES_TO]->(m:Entity)')) {
+    if (
+      query.includes('MATCH (n:Entity)-[e:RELATES_TO]->(m:Entity)') ||
+      query.includes("db.idx.fulltext.queryRelationships('RELATES_TO'")
+    ) {
       return {
         data: [
           {
@@ -2769,7 +2772,10 @@ class SearchFakeFalkorGraph {
       };
     }
 
-    if (query.includes('MATCH (n:Entity)')) {
+    if (
+      query.includes('MATCH (n:Entity)') ||
+      query.includes("db.idx.fulltext.queryNodes('Entity'")
+    ) {
       return {
         data: [
           {
@@ -3120,11 +3126,11 @@ class SearchFusionFakeNeo4jClient {
       };
     }
 
-    if (query.includes('MATCH (n:Entity)-[e:RELATES_TO]->(m:Entity)')) {
+    if (query.includes('MATCH (n:Entity)-[e:RELATES_TO]->(m:Entity)') || query.includes("db.index.fulltext.queryRelationships('edge_name_and_fact'")) {
       return { records: [] };
     }
 
-    if (query.includes('MATCH (n:Entity)')) {
+    if (query.includes('MATCH (n:Entity)') || query.includes("db.index.fulltext.queryNodes('node_name_and_summary'")) {
       return {
         records: [
           {
@@ -3155,7 +3161,7 @@ class SearchVectorFakeNeo4jClient {
   async executeQuery<RecordShape = unknown>(
     query: string
   ): Promise<QueryResult<RecordShape>> {
-    if (query.includes('MATCH (n:Entity)-[e:RELATES_TO]->(m:Entity)')) {
+    if (query.includes('MATCH (n:Entity)-[e:RELATES_TO]->(m:Entity)') || query.includes("db.index.fulltext.queryRelationships('edge_name_and_fact'")) {
       return {
         records: [
           {
@@ -3176,7 +3182,7 @@ class SearchVectorFakeNeo4jClient {
       };
     }
 
-    if (query.includes('MATCH (n:Entity)')) {
+    if (query.includes('MATCH (n:Entity)') || query.includes("db.index.fulltext.queryNodes('node_name_and_summary'")) {
       return {
         records: [
           {
@@ -3244,7 +3250,7 @@ class SearchEpisodeFakeNeo4jClient {
   async executeQuery<RecordShape = unknown>(
     query: string
   ): Promise<QueryResult<RecordShape>> {
-    if (query.includes('MATCH (n:Episodic)')) {
+    if (query.includes('MATCH (n:Episodic)') || query.includes("db.index.fulltext.queryNodes('episode_content'")) {
       return {
         records: [
           {

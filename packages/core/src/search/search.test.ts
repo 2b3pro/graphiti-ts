@@ -310,7 +310,7 @@ class SearchFakeNeo4jClient {
   async executeQuery<RecordShape = unknown>(
     query: string
   ): Promise<QueryResult<RecordShape>> {
-    if (query.includes('MATCH (n:Entity)-[e:RELATES_TO]->(m:Entity)')) {
+    if ((query.includes('MATCH (n:Entity)-[e:RELATES_TO]->(m:Entity)') || query.includes("db.index.fulltext.queryRelationships('edge_name_and_fact'"))) {
       return {
         records: [
           {
@@ -331,7 +331,7 @@ class SearchFakeNeo4jClient {
       };
     }
 
-    if (query.includes('MATCH (n:Entity)')) {
+    if ((query.includes('MATCH (n:Entity)') || query.includes("db.index.fulltext.queryNodes('node_name_and_summary'"))) {
       return {
         records: [
           {
@@ -348,7 +348,7 @@ class SearchFakeNeo4jClient {
       };
     }
 
-    if (query.includes('MATCH (n:Episodic)')) {
+    if ((query.includes('MATCH (n:Episodic)') || query.includes("db.index.fulltext.queryNodes('episode_content'"))) {
       return {
         records: [
           {
@@ -473,7 +473,7 @@ class SearchFusionFakeNeo4jClient {
       };
     }
 
-    if (query.includes('MATCH (n:Entity)-[e:RELATES_TO]->(m:Entity)')) {
+    if ((query.includes('MATCH (n:Entity)-[e:RELATES_TO]->(m:Entity)') || query.includes("db.index.fulltext.queryRelationships('edge_name_and_fact'"))) {
       return {
         records: [
           {
@@ -522,7 +522,7 @@ class SearchVectorFakeNeo4jClient {
     query: string
   ): Promise<QueryResult<RecordShape>> {
     if (
-      query.includes('MATCH (n:Entity)-[e:RELATES_TO]->(m:Entity)') &&
+      (query.includes('MATCH (n:Entity)-[e:RELATES_TO]->(m:Entity)') || query.includes("db.index.fulltext.queryRelationships('edge_name_and_fact'")) &&
       !query.includes('e.fact_embedding IS NOT NULL')
     ) {
       return {
@@ -574,7 +574,7 @@ class SearchVectorFakeNeo4jClient {
     }
 
     if (
-      query.includes('MATCH (n:Entity)') &&
+      (query.includes('MATCH (n:Entity)') || query.includes("db.index.fulltext.queryNodes('node_name_and_summary'")) &&
       !query.includes('n.name_embedding IS NOT NULL') &&
       !query.includes('-[e:RELATES_TO]->')
     ) {
@@ -722,7 +722,7 @@ class SearchEpisodeVectorFakeNeo4jClient {
   async executeQuery<RecordShape = unknown>(
     query: string
   ): Promise<QueryResult<RecordShape>> {
-    if (query.includes('MATCH (n:Episodic)')) {
+    if ((query.includes('MATCH (n:Episodic)') || query.includes("db.index.fulltext.queryNodes('episode_content'"))) {
       return {
         records: [
           {

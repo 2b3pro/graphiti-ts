@@ -189,7 +189,14 @@ export class Neo4jDriver extends BaseGraphDriver {
       'CREATE INDEX entity_name IF NOT EXISTS FOR (n:Entity) ON (n.name)',
       'CREATE INDEX episodic_name IF NOT EXISTS FOR (n:Episodic) ON (n.name)',
       'CREATE INDEX entity_edge_uuid IF NOT EXISTS FOR ()-[e:RELATES_TO]-() ON (e.uuid)',
-      'CREATE INDEX episodic_edge_uuid IF NOT EXISTS FOR ()-[e:MENTIONS]-() ON (e.uuid)'
+      'CREATE INDEX episodic_edge_uuid IF NOT EXISTS FOR ()-[e:MENTIONS]-() ON (e.uuid)',
+      // Fulltext (BM25) indexes backing the lexical leg of hybrid search. Neo4j
+      // populates these over existing data on creation; queries fall back to a
+      // CONTAINS scan if a graph predates them.
+      'CREATE FULLTEXT INDEX node_name_and_summary IF NOT EXISTS FOR (n:Entity) ON EACH [n.name, n.summary]',
+      'CREATE FULLTEXT INDEX edge_name_and_fact IF NOT EXISTS FOR ()-[e:RELATES_TO]-() ON EACH [e.name, e.fact]',
+      'CREATE FULLTEXT INDEX episode_content IF NOT EXISTS FOR (n:Episodic) ON EACH [n.name, n.content, n.source_description]',
+      'CREATE FULLTEXT INDEX community_name IF NOT EXISTS FOR (n:Community) ON EACH [n.name, n.summary]'
     ];
 
     for (const query of queries) {

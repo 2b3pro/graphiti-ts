@@ -9,9 +9,54 @@ import { mapEntityNode, mapEpisodeNode } from '../../namespaces/nodes';
 import type { SearchFilters } from '../../search/filters';
 import { edgeSearchFilterQueryConstructor, nodeSearchFilterQueryConstructor, type ComparisonOperator } from '../../search/filters';
 import { rankByCosineSimilarity } from '../../search/ranking';
+import { buildFulltextQuery } from '../../utils/text';
 import { getRecordValue, type RecordLike } from '../../utils/records';
 import type { SearchOperations } from '../operations/search-operations';
 import { ENTITY_EDGE_FIELDS } from '../cypher-fields';
+
+/** Names of the Neo4j fulltext indexes created by buildIndicesAndConstraints. */
+export const NEO4J_FULLTEXT_INDEXES = {
+  node: 'node_name_and_summary',
+  edge: 'edge_name_and_fact',
+  episode: 'episode_content',
+  community: 'community_name'
+} as const;
+
+/**
+ * True when an error indicates the fulltext index has not been created yet
+ * (graph predates the fulltext migration). Such graphs fall back to a CONTAINS scan.
+ */
+function isMissingFulltextIndexError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /no such fulltext (schema )?index/i.test(message);
+}
+
+/**
+ * Build the WHERE clause (group + search filters) applied on top of fulltext
+ * index results. Unlike the CONTAINS builders, this does NOT add a substring
+ * predicate — relevance comes from the index score.
+ */
+function buildFulltextFilterClause(
+  filterQueries: string[],
+  filterParams: Record<string, unknown>,
+  groupIds: string[] | null | undefined,
+  groupIdField: string
+): { clause: string; params: Record<string, unknown> } {
+  const params: Record<string, unknown> = { ...filterParams };
+  const queries: string[] = [];
+
+  if (groupIds && groupIds.length > 0) {
+    queries.push(`${groupIdField} IN $group_ids`);
+    params.group_ids = groupIds;
+  }
+
+  queries.push(...filterQueries);
+
+  return {
+    clause: queries.length > 0 ? `WHERE ${queries.join(' AND ')}` : '',
+    params
+  };
+}
 
 export class Neo4jSearchOperations implements SearchOperations {
   async nodeSimilaritySearch(
@@ -98,6 +143,62 @@ export class Neo4jSearchOperations implements SearchOperations {
     groupIds?: string[] | null,
     limit = 10
   ): Promise<EntityNode[]> {
+    const fulltextQuery = buildFulltextQuery(query, groupIds);
+    if (fulltextQuery === '') {
+      return [];
+    }
+
+    const [filterQueries, filterParams] = nodeSearchFilterQueryConstructor(
+      searchFilter,
+      GraphProviders.NEO4J
+    );
+    const { clause, params } = buildFulltextFilterClause(
+      filterQueries,
+      filterParams,
+      groupIds,
+      'n.group_id'
+    );
+
+    try {
+      const result = await driver.executeQuery<RecordLike>(
+        `
+        CALL db.index.fulltext.queryNodes('${NEO4J_FULLTEXT_INDEXES.node}', $query) YIELD node AS n, score
+        ${clause}
+        RETURN
+          n.uuid AS uuid,
+          n.name AS name,
+          n.group_id AS group_id,
+          coalesce(n.labels, labels(n)) AS labels,
+          n.created_at AS created_at,
+          n.name_embedding AS name_embedding,
+          n.summary AS summary,
+          n.attributes AS attributes
+        ORDER BY score DESC
+        LIMIT toInteger($limit)
+      `,
+        {
+          params: { ...params, query: fulltextQuery, limit },
+          routing: 'r'
+        }
+      );
+
+      return result.records.map((record) => mapEntityNode(record));
+    } catch (error) {
+      if (!isMissingFulltextIndexError(error)) {
+        throw error;
+      }
+      return this.nodeContainsSearch(driver, query, searchFilter, groupIds, limit);
+    }
+  }
+
+  /** Legacy substring scan retained as a fallback for graphs without the fulltext index. */
+  private async nodeContainsSearch(
+    driver: GraphDriver,
+    query: string,
+    searchFilter: SearchFilters,
+    groupIds: string[] | null | undefined,
+    limit: number
+  ): Promise<EntityNode[]> {
     const { clause, params } = buildNodeSearchWhereClause(query, searchFilter, groupIds);
     const result = await driver.executeQuery<RecordLike>(
       `
@@ -116,10 +217,7 @@ export class Neo4jSearchOperations implements SearchOperations {
         LIMIT toInteger($limit)
       `,
       {
-        params: {
-          ...params,
-          limit
-        },
+        params: { ...params, limit },
         routing: 'r'
       }
     );
@@ -133,6 +231,60 @@ export class Neo4jSearchOperations implements SearchOperations {
     searchFilter: SearchFilters,
     groupIds?: string[] | null,
     limit = 10
+  ): Promise<EntityEdge[]> {
+    const fulltextQuery = buildFulltextQuery(query, groupIds);
+    if (fulltextQuery === '') {
+      return [];
+    }
+
+    const [filterQueries, filterParams] = edgeSearchFilterQueryConstructor(
+      searchFilter,
+      GraphProviders.NEO4J
+    );
+    const { clause, params } = buildFulltextFilterClause(
+      filterQueries,
+      filterParams,
+      groupIds,
+      'e.group_id'
+    );
+
+    try {
+      const result = await driver.executeQuery<RecordLike>(
+        `
+        CALL db.index.fulltext.queryRelationships('${NEO4J_FULLTEXT_INDEXES.edge}', $query) YIELD relationship AS e, score
+        MATCH (n:Entity)-[e]->(m:Entity)
+        ${clause}
+        RETURN
+          e.uuid AS uuid,
+          e.group_id AS group_id,
+          n.uuid AS source_node_uuid,
+          m.uuid AS target_node_uuid,
+          ${ENTITY_EDGE_FIELDS}
+        ORDER BY score DESC
+        LIMIT toInteger($limit)
+      `,
+        {
+          params: { ...params, query: fulltextQuery, limit },
+          routing: 'r'
+        }
+      );
+
+      return result.records.map((record) => mapEntityEdge(record));
+    } catch (error) {
+      if (!isMissingFulltextIndexError(error)) {
+        throw error;
+      }
+      return this.edgeContainsSearch(driver, query, searchFilter, groupIds, limit);
+    }
+  }
+
+  /** Legacy substring scan retained as a fallback for graphs without the fulltext index. */
+  private async edgeContainsSearch(
+    driver: GraphDriver,
+    query: string,
+    searchFilter: SearchFilters,
+    groupIds: string[] | null | undefined,
+    limit: number
   ): Promise<EntityEdge[]> {
     const { clause, params } = buildEdgeSearchWhereClause(query, searchFilter, groupIds);
     const result = await driver.executeQuery<RecordLike>(
@@ -149,10 +301,7 @@ export class Neo4jSearchOperations implements SearchOperations {
         LIMIT toInteger($limit)
       `,
       {
-        params: {
-          ...params,
-          limit
-        },
+        params: { ...params, limit },
         routing: 'r'
       }
     );
@@ -359,6 +508,54 @@ export class Neo4jSearchOperations implements SearchOperations {
     groupIds?: string[] | null,
     limit = 10
   ): Promise<EpisodicNode[]> {
+    const fulltextQuery = buildFulltextQuery(query, groupIds);
+    if (fulltextQuery === '') {
+      return [];
+    }
+
+    const { clause, params } = buildFulltextFilterClause([], {}, groupIds, 'n.group_id');
+
+    try {
+      const result = await driver.executeQuery<RecordLike>(
+        `
+        CALL db.index.fulltext.queryNodes('${NEO4J_FULLTEXT_INDEXES.episode}', $query) YIELD node AS n, score
+        ${clause}
+        RETURN
+          n.uuid AS uuid,
+          n.name AS name,
+          n.group_id AS group_id,
+          coalesce(n.labels, labels(n)) AS labels,
+          n.created_at AS created_at,
+          n.source AS source,
+          n.source_description AS source_description,
+          n.content AS content,
+          n.valid_at AS valid_at,
+          n.entity_edges AS entity_edges
+        ORDER BY score DESC
+        LIMIT toInteger($limit)
+      `,
+        {
+          params: { ...params, query: fulltextQuery, limit },
+          routing: 'r'
+        }
+      );
+
+      return result.records.map((record) => mapEpisodeNode(record));
+    } catch (error) {
+      if (!isMissingFulltextIndexError(error)) {
+        throw error;
+      }
+      return this.episodeContainsSearch(driver, query, groupIds, limit);
+    }
+  }
+
+  /** Legacy substring scan retained as a fallback for graphs without the fulltext index. */
+  private async episodeContainsSearch(
+    driver: GraphDriver,
+    query: string,
+    groupIds: string[] | null | undefined,
+    limit: number
+  ): Promise<EpisodicNode[]> {
     const params: Record<string, unknown> = {
       query_lower: query.toLowerCase(),
       limit
@@ -404,6 +601,49 @@ export class Neo4jSearchOperations implements SearchOperations {
     query: string,
     groupIds?: string[] | null,
     limit = 20
+  ): Promise<CommunityNode[]> {
+    const fulltextQuery = buildFulltextQuery(query, groupIds);
+    if (fulltextQuery === '') {
+      return [];
+    }
+
+    const { clause, params } = buildFulltextFilterClause([], {}, groupIds, 'c.group_id');
+
+    try {
+      const result = await driver.executeQuery<RecordLike>(
+        `
+        CALL db.index.fulltext.queryNodes('${NEO4J_FULLTEXT_INDEXES.community}', $query) YIELD node AS c, score
+        ${clause}
+        RETURN
+          c.uuid AS uuid,
+          c.name AS name,
+          c.group_id AS group_id,
+          coalesce(c.labels, labels(c)) AS labels,
+          c.created_at AS created_at,
+          c.summary AS summary,
+          c.name_embedding AS name_embedding,
+          c.rank AS rank
+        ORDER BY score DESC
+        LIMIT toInteger($limit)
+      `,
+        { params: { ...params, query: fulltextQuery, limit }, routing: 'r' }
+      );
+
+      return result.records.map((record) => mapCommunityNode(record));
+    } catch (error) {
+      if (!isMissingFulltextIndexError(error)) {
+        throw error;
+      }
+      return this.communityContainsSearch(driver, query, groupIds, limit);
+    }
+  }
+
+  /** Legacy substring scan retained as a fallback for graphs without the fulltext index. */
+  private async communityContainsSearch(
+    driver: GraphDriver,
+    query: string,
+    groupIds: string[] | null | undefined,
+    limit: number
   ): Promise<CommunityNode[]> {
     const params: Record<string, unknown> = {
       query_lower: query.toLowerCase(),
