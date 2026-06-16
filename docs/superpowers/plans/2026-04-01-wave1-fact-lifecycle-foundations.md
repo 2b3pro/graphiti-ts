@@ -179,7 +179,7 @@ describe('DOMAIN_VELOCITY', () => {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd /Volumes/Xarismata/Projects/graphiti-ts && bun test packages/core/src/domain/staleness.test.ts`
+Run: `cd /Volumes/Exagora/Projects/graphiti-ts && bun test packages/core/src/domain/staleness.test.ts`
 Expected: FAIL — module `./staleness` not found
 
 - [ ] **Step 3: Write the staleness module**
@@ -278,13 +278,13 @@ export function computeStaleness(factors: StalenessFactors): number {
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd /Volumes/Xarismata/Projects/graphiti-ts && bun test packages/core/src/domain/staleness.test.ts`
+Run: `cd /Volumes/Exagora/Projects/graphiti-ts && bun test packages/core/src/domain/staleness.test.ts`
 Expected: All 9 tests PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /Volumes/Xarismata/Projects/graphiti-ts
+cd /Volumes/Exagora/Projects/graphiti-ts
 git add packages/core/src/domain/staleness.ts packages/core/src/domain/staleness.test.ts
 git commit -m "feat: add staleness scoring for edge freshness signals"
 ```
@@ -430,7 +430,7 @@ describe('detectNegation', () => {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd /Volumes/Xarismata/Projects/graphiti-ts && bun test packages/core/src/maintenance/negation.test.ts`
+Run: `cd /Volumes/Exagora/Projects/graphiti-ts && bun test packages/core/src/maintenance/negation.test.ts`
 Expected: FAIL — module `./negation` not found
 
 - [ ] **Step 3: Write the negation module**
@@ -530,13 +530,13 @@ export function detectNegation(
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd /Volumes/Xarismata/Projects/graphiti-ts && bun test packages/core/src/maintenance/negation.test.ts`
+Run: `cd /Volumes/Exagora/Projects/graphiti-ts && bun test packages/core/src/maintenance/negation.test.ts`
 Expected: All tests PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /Volumes/Xarismata/Projects/graphiti-ts
+cd /Volumes/Exagora/Projects/graphiti-ts
 git add packages/core/src/maintenance/negation.ts packages/core/src/maintenance/negation.test.ts
 git commit -m "feat: add semantic negation pre-filter for contradiction detection"
 ```
@@ -643,7 +643,7 @@ describe('deprecateEdge', () => {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd /Volumes/Xarismata/Projects/graphiti-ts && bun test packages/core/src/graphiti.test.ts --grep "deprecateEdge"`
+Run: `cd /Volumes/Exagora/Projects/graphiti-ts && bun test packages/core/src/graphiti.test.ts --grep "deprecateEdge"`
 Expected: FAIL — `deprecateEdge` is not a function
 
 - [ ] **Step 3: Add deprecateEdge() and deprecateEdges() to Graphiti class**
@@ -769,13 +769,13 @@ In `packages/core/src/graphiti.ts`, add these methods after the `deleteEntityEdg
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd /Volumes/Xarismata/Projects/graphiti-ts && bun test packages/core/src/graphiti.test.ts --grep "deprecateEdge"`
+Run: `cd /Volumes/Exagora/Projects/graphiti-ts && bun test packages/core/src/graphiti.test.ts --grep "deprecateEdge"`
 Expected: All 3 tests PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /Volumes/Xarismata/Projects/graphiti-ts
+cd /Volumes/Exagora/Projects/graphiti-ts
 git add packages/core/src/graphiti.ts packages/core/src/graphiti.test.ts
 git commit -m "feat: add deprecateEdge() and deprecateEdges() to Graphiti class"
 ```
@@ -831,7 +831,7 @@ describe('negation pre-filter integration', () => {
 
 - [ ] **Step 2: Run test to verify it passes** (uses existing `detectNegation`, so should pass)
 
-Run: `cd /Volumes/Xarismata/Projects/graphiti-ts && bun test packages/core/src/maintenance/edge-operations.test.ts --grep "negation pre-filter"`
+Run: `cd /Volumes/Exagora/Projects/graphiti-ts && bun test packages/core/src/maintenance/edge-operations.test.ts --grep "negation pre-filter"`
 Expected: PASS — the detection function works independently
 
 - [ ] **Step 3: Modify resolveExtractedEdge() to call the pre-filter**
@@ -902,13 +902,13 @@ Change the existing `return [resolvedEdge, invalidatedEdges];` to `return [resol
 
 - [ ] **Step 4: Run full edge-operations tests**
 
-Run: `cd /Volumes/Xarismata/Projects/graphiti-ts && bun test packages/core/src/maintenance/edge-operations.test.ts`
+Run: `cd /Volumes/Exagora/Projects/graphiti-ts && bun test packages/core/src/maintenance/edge-operations.test.ts`
 Expected: All tests PASS (existing + new)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /Volumes/Xarismata/Projects/graphiti-ts
+cd /Volumes/Exagora/Projects/graphiti-ts
 git add packages/core/src/maintenance/edge-operations.ts packages/core/src/maintenance/edge-operations.test.ts
 git commit -m "feat: integrate negation pre-filter into edge contradiction pipeline"
 ```
@@ -955,18 +955,18 @@ export {
 
 - [ ] **Step 3: Run type check**
 
-Run: `cd /Volumes/Xarismata/Projects/graphiti-ts && bunx tsc --noEmit`
+Run: `cd /Volumes/Exagora/Projects/graphiti-ts && bunx tsc --noEmit`
 Expected: No type errors
 
 - [ ] **Step 4: Run all tests**
 
-Run: `cd /Volumes/Xarismata/Projects/graphiti-ts && bun test`
+Run: `cd /Volumes/Exagora/Projects/graphiti-ts && bun test`
 Expected: All tests PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /Volumes/Xarismata/Projects/graphiti-ts
+cd /Volumes/Exagora/Projects/graphiti-ts
 git add packages/core/src/maintenance/index.ts packages/core/src/index.ts
 git commit -m "chore: re-export staleness and negation modules from package index"
 ```
@@ -979,18 +979,18 @@ git commit -m "chore: re-export staleness and negation modules from package inde
 
 - [ ] **Step 1: Run the full test suite**
 
-Run: `cd /Volumes/Xarismata/Projects/graphiti-ts && bun test`
+Run: `cd /Volumes/Exagora/Projects/graphiti-ts && bun test`
 Expected: All tests PASS
 
 - [ ] **Step 2: Run type check**
 
-Run: `cd /Volumes/Xarismata/Projects/graphiti-ts && bunx tsc --noEmit`
+Run: `cd /Volumes/Exagora/Projects/graphiti-ts && bunx tsc --noEmit`
 Expected: No type errors
 
 - [ ] **Step 3: Verify exports work from consumer perspective**
 
 ```bash
-cd /Volumes/Xarismata/Projects/graphiti-ts
+cd /Volumes/Exagora/Projects/graphiti-ts
 bun -e "const { computeStaleness, detectNegation, Graphiti } = require('./packages/core/src/index'); console.log('computeStaleness:', typeof computeStaleness); console.log('detectNegation:', typeof detectNegation); console.log('Graphiti.prototype.deprecateEdge:', typeof Graphiti.prototype.deprecateEdge);"
 ```
 
@@ -1001,7 +1001,7 @@ Expected: All three print `function`
 If Steps 1-3 revealed issues that required fixes, commit those fixes:
 
 ```bash
-cd /Volumes/Xarismata/Projects/graphiti-ts
+cd /Volumes/Exagora/Projects/graphiti-ts
 git add -A
 git commit -m "fix: resolve test/type issues from Wave 1 integration"
 ```

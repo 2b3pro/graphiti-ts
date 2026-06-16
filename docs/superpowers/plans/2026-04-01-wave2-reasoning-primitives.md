@@ -8,7 +8,7 @@
 
 **Tech Stack:** TypeScript, Neo4j 5.26+ (relationship properties), Bun test runner
 
-**Repository:** `/Volumes/Xarismata/Projects/graphiti-ts/` (monorepo, `packages/core/src/`)
+**Repository:** `/Volumes/Exagora/Projects/graphiti-ts/` (monorepo, `packages/core/src/`)
 
 **Design decisions (Eng Review 2026-04-01):**
 - Death gate uses inline scoring in the library (no PAI Scoring Engine dependency)
@@ -130,7 +130,7 @@ const result = await driver.executeQuery<RecordLike>(
 
 - [ ] **Step 3: Run type check and tests**
 
-Run: `cd /Volumes/Xarismata/Projects/graphiti-ts && bunx tsc --noEmit && bun test`
+Run: `cd /Volumes/Exagora/Projects/graphiti-ts && bunx tsc --noEmit && bun test`
 Expected: All existing tests pass. Zero new failures.
 
 - [ ] **Step 4: Export from index**
@@ -283,7 +283,7 @@ describe('EdgeCondition', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /Volumes/Xarismata/Projects/graphiti-ts && bun test packages/core/src/domain/conditions.test.ts`
+Run: `cd /Volumes/Exagora/Projects/graphiti-ts && bun test packages/core/src/domain/conditions.test.ts`
 Expected: FAIL — module `./conditions` not found
 
 - [ ] **Step 3: Implement conditions module**
@@ -380,7 +380,7 @@ export function evaluateConditions(
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd /Volumes/Xarismata/Projects/graphiti-ts && bun test packages/core/src/domain/conditions.test.ts`
+Run: `cd /Volumes/Exagora/Projects/graphiti-ts && bun test packages/core/src/domain/conditions.test.ts`
 Expected: All 10 tests PASS
 
 - [ ] **Step 5: Add `conditions` field to EntityEdge**
@@ -526,7 +526,7 @@ export * from './domain/conditions';
 
 - [ ] **Step 12: Run full type check and tests**
 
-Run: `cd /Volumes/Xarismata/Projects/graphiti-ts && bunx tsc --noEmit && bun test`
+Run: `cd /Volumes/Exagora/Projects/graphiti-ts && bunx tsc --noEmit && bun test`
 Expected: All tests pass including new conditions tests.
 
 - [ ] **Step 13: Commit**
@@ -718,7 +718,7 @@ describe('ANCHOR_TYPES', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /Volumes/Xarismata/Projects/graphiti-ts && bun test packages/core/src/domain/anchoring.test.ts`
+Run: `cd /Volumes/Exagora/Projects/graphiti-ts && bun test packages/core/src/domain/anchoring.test.ts`
 Expected: FAIL — module not found
 
 - [ ] **Step 3: Implement anchoring module**
@@ -839,7 +839,7 @@ export function computeAnchorConfidence(
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd /Volumes/Xarismata/Projects/graphiti-ts && bun test packages/core/src/domain/anchoring.test.ts`
+Run: `cd /Volumes/Exagora/Projects/graphiti-ts && bun test packages/core/src/domain/anchoring.test.ts`
 Expected: All 10 tests PASS
 
 - [ ] **Step 5: Add anchoring fields to EntityEdge**
@@ -963,7 +963,7 @@ export * from './domain/anchoring';
 
 - [ ] **Step 10: Run full type check and tests**
 
-Run: `cd /Volumes/Xarismata/Projects/graphiti-ts && bunx tsc --noEmit && bun test`
+Run: `cd /Volumes/Exagora/Projects/graphiti-ts && bunx tsc --noEmit && bun test`
 Expected: All tests pass
 
 - [ ] **Step 11: Commit**
@@ -1182,7 +1182,7 @@ describe('resolveContradiction', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /Volumes/Xarismata/Projects/graphiti-ts && bun test packages/core/src/domain/deprecation-gate.test.ts`
+Run: `cd /Volumes/Exagora/Projects/graphiti-ts && bun test packages/core/src/domain/deprecation-gate.test.ts`
 Expected: FAIL — module not found
 
 - [ ] **Step 3: Implement deprecation gate module**
@@ -1463,7 +1463,7 @@ export function resolveContradiction(
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd /Volumes/Xarismata/Projects/graphiti-ts && bun test packages/core/src/domain/deprecation-gate.test.ts`
+Run: `cd /Volumes/Exagora/Projects/graphiti-ts && bun test packages/core/src/domain/deprecation-gate.test.ts`
 Expected: All 10 tests PASS
 
 - [ ] **Step 5: Export from index**
@@ -1475,7 +1475,7 @@ export * from './domain/deprecation-gate';
 
 - [ ] **Step 6: Run full type check and tests**
 
-Run: `cd /Volumes/Xarismata/Projects/graphiti-ts && bunx tsc --noEmit && bun test`
+Run: `cd /Volumes/Exagora/Projects/graphiti-ts && bunx tsc --noEmit && bun test`
 Expected: All tests pass
 
 - [ ] **Step 7: Commit domain module**
@@ -1729,7 +1729,7 @@ In the negation pre-filter block (around line 388), add the negation confidence 
 
 - [ ] **Step 4: Run full type check and tests**
 
-Run: `cd /Volumes/Xarismata/Projects/graphiti-ts && bunx tsc --noEmit && bun test`
+Run: `cd /Volumes/Exagora/Projects/graphiti-ts && bunx tsc --noEmit && bun test`
 Expected: All tests pass
 
 - [ ] **Step 5: Commit**
@@ -1759,12 +1759,12 @@ export * from './domain/deprecation-gate';
 
 These should already be added in previous tasks. Verify with:
 ```bash
-cd /Volumes/Xarismata/Projects/graphiti-ts && grep -n "conditions\|anchoring\|deprecation-gate" packages/core/src/index.ts
+cd /Volumes/Exagora/Projects/graphiti-ts && grep -n "conditions\|anchoring\|deprecation-gate" packages/core/src/index.ts
 ```
 
 - [ ] **Step 2: Update README "What's Different" table**
 
-In `/Volumes/Xarismata/Projects/graphiti-ts/README.md`, add to the "What's Different from the Python Original" table:
+In `/Volumes/Exagora/Projects/graphiti-ts/README.md`, add to the "What's Different from the Python Original" table:
 
 ```markdown
 | **Conditional edges** | `EdgeCondition` type on entity edges — facts that are only true under specific conditions. Extraction prompt detects conditional language. Condition-aware search filters. |
@@ -1774,7 +1774,7 @@ In `/Volumes/Xarismata/Projects/graphiti-ts/README.md`, add to the "What's Diffe
 
 - [ ] **Step 3: Run final type check**
 
-Run: `cd /Volumes/Xarismata/Projects/graphiti-ts && bunx tsc --noEmit && bun test`
+Run: `cd /Volumes/Exagora/Projects/graphiti-ts && bunx tsc --noEmit && bun test`
 Expected: All pass
 
 - [ ] **Step 4: Commit**
