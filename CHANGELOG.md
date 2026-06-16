@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.2.4
+
+### Temporal filter correctness (fixes silent empty results)
+
+- **`searchAsOf()` returned 0 edges for every date.** Two compounding bugs, both fixed:
+  - The `invalid_at` conditions were packed into one inner `DateFilter[]` array, which `appendDateFilters` AND-joins — producing `(invalid_at > d AND invalid_at IS NULL)`, a contradiction that matches nothing. They are now in separate OR-groups: `(invalid_at > d) OR (invalid_at IS NULL)`.
+  - Date properties are persisted as ISO-8601 **strings** (`serializeForCypher`), but `DateFilter` passed a JS `Date`, which the driver serializes to a Neo4j `DateTime`; `string <op> datetime` is a silent type mismatch that matches nothing.
+- **All date params now route through `serializeForCypher`** at the query boundary — one canonical contract, symmetric with the write side. This also fixes the same latent mismatch in `deprecateEdges({ older_than })` (was a permanent no-op), the `deprecateEdges` write of `deprecated_at` (was poisoning `invalid_at` with a `DateTime`), and `EpisodeNodeNamespace.getByGroupIds(referenceTime)`.
+- `DateFilter.date` widened to `Date | string` and documented (an ISO string may be passed directly).
+- **Tests:** the prior `searchAsOf` test passed despite the bug because its fake driver ignored the WHERE clause. Added Cypher-construction assertions (`search/filters.asof.test.ts`) and param-capture tests (`deprecateEdges` older_than/deprecated_at, `retrieveEpisodes` reference_time) that catch the bug class a fake driver can't.
+
+## v0.2.3
+
+- **`bulk_edge_resolution_max_concurrency`:** throttle edge-resolution fan-out in bulk ingestion to avoid saturating the LLM gateway.
+- **`fix(dedup)`:** strip trailing punctuation from facts at ingestion and comparison time so `"X."` and `"X"` dedup correctly.
+
+## v0.2.2
+
+- **Configurable `candidate_expansion`** in search config + **BGE reranker batch chunking** to keep cross-encoder request sizes bounded.
+
 ## v0.2.1
 
 ### Resolution & inference optimization
