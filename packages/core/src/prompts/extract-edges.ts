@@ -5,18 +5,18 @@
 import type { Message } from './types';
 
 export function extractEdges(context: Record<string, unknown>): Message[] {
-  return [
-    {
-      role: 'system',
-      content:
-        'You are an expert fact extractor that extracts fact triples from text. ' +
-        '1. Extracted fact triples should also be extracted with relevant date information. ' +
-        '2. Treat the CURRENT TIME as the time the CURRENT MESSAGE was sent. ' +
-        'All temporal information should be extracted relative to this time.'
-    },
-    {
-      role: 'user',
-      content: `PREVIOUS MESSAGES:
+	return [
+		{
+			role: 'system',
+			content:
+				'You are an expert fact extractor that extracts fact triples from text. ' +
+				'1. Extracted fact triples should also be extracted with relevant date information. ' +
+				'2. Treat the CURRENT TIME as the time the CURRENT MESSAGE was sent. ' +
+				'All temporal information should be extracted relative to this time.',
+		},
+		{
+			role: 'user',
+			content: `PREVIOUS MESSAGES:
 ${context.previous_messages ?? 'None'}
 
 CURRENT MESSAGE:
@@ -55,20 +55,23 @@ CONDITIONAL EDGE RULES:
 - Conditions reference entities from the ENTITIES list. If the condition entity is not in the list, omit the condition.
 - Non-conditional facts should have conditions: null.
 ${context.custom_extraction_instructions ? `\nADDITIONAL INSTRUCTIONS:\n${context.custom_extraction_instructions}` : ''}
-Respond with JSON: {"edges": [{"source_entity_name": "...", "target_entity_name": "...", "relation_type": "...", "fact": "...", "valid_at": "..." or null, "invalid_at": "..." or null, "conditions": [{"entity_name": "...", "required_state": "active" | "inactive", "relationship": "requires" | "blocked_by"}] or null}, ...]}`
-    }
-  ];
+Respond with JSON: {"edges": [{"source_entity_name": "...", "target_entity_name": "...", "relation_type": "...", "fact": "...", "valid_at": "..." or null, "invalid_at": "..." or null, "conditions": [{"entity_name": "...", "required_state": "active" | "inactive", "relationship": "requires" | "blocked_by"}] or null}, ...]}`,
+		},
+	];
 }
 
 export function extractEdgeAttributes(context: Record<string, unknown>): Message[] {
-  return [
-    {
-      role: 'system',
-      content: 'You are a helpful assistant that extracts fact properties from the provided text.'
-    },
-    {
-      role: 'user',
-      content: `FACT:
+	return [
+		{
+			role: 'system',
+			content:
+				'You extract structured fact attributes from source text. Field descriptions ' +
+				'are format requirements, not values. Never include reasoning, alternatives, ' +
+				'schema text, or explanations in attribute values.',
+		},
+		{
+			role: 'user',
+			content: `FACT:
 ${context.fact ?? ''}
 
 REFERENCE TIME: ${context.reference_time ?? new Date().toISOString()}
@@ -84,8 +87,11 @@ GUIDELINES:
 - Do not hallucinate values
 - Use REFERENCE_TIME to resolve relative temporal expressions
 - Preserve existing attribute values unless new information supersedes them
+- Do not copy field descriptions, examples, or schema text into values
+- Do not include parenthetical reasoning, candidate alternatives, or phrases like "could be", "likely", "N/A", "null", or "unknown"
+- Use null only as JSON null when the schema requires a value and the fact gives no value
 
-Respond with JSON containing the updated attributes object.`
-    }
-  ];
+Respond with JSON containing the updated attributes object.`,
+		},
+	];
 }

@@ -2,21 +2,21 @@
  * Node extraction prompts — port of Python's graphiti_core/prompts/extract_nodes.py.
  */
 
-import type { Message } from './types';
 import { SUMMARY_INSTRUCTIONS } from './snippets';
+import type { Message } from './types';
 
 export function extractMessage(context: Record<string, unknown>): Message[] {
-  return [
-    {
-      role: 'system',
-      content:
-        'You are an AI assistant that extracts entity nodes from conversational messages. ' +
-        'Your primary task is to extract and classify the speaker and other significant entities ' +
-        'mentioned in the conversation.'
-    },
-    {
-      role: 'user',
-      content: `ENTITY TYPES:
+	return [
+		{
+			role: 'system',
+			content:
+				'You are an AI assistant that extracts entity nodes from conversational messages. ' +
+				'Your primary task is to extract and classify the speaker and other significant entities ' +
+				'mentioned in the conversation.',
+		},
+		{
+			role: 'user',
+			content: `ENTITY TYPES:
 ${context.entity_types ?? 'No entity types provided.'}
 
 PREVIOUS MESSAGES:
@@ -37,22 +37,22 @@ GUIDELINES:
 - Each entity_type_id must reference a valid type from the ENTITY TYPES list
 - If no matching type exists, use 0
 
-Respond with JSON: {"extracted_entities": [{"name": "...", "entity_type_id": ...}, ...]}`
-    }
-  ];
+Respond with JSON: {"extracted_entities": [{"name": "...", "entity_type_id": ...}, ...]}`,
+		},
+	];
 }
 
 export function extractJson(context: Record<string, unknown>): Message[] {
-  return [
-    {
-      role: 'system',
-      content:
-        'You are an AI assistant that extracts entity nodes from JSON. ' +
-        'Your primary task is to extract and classify relevant entities from JSON files.'
-    },
-    {
-      role: 'user',
-      content: `ENTITY TYPES:
+	return [
+		{
+			role: 'system',
+			content:
+				'You are an AI assistant that extracts entity nodes from JSON. ' +
+				'Your primary task is to extract and classify relevant entities from JSON files.',
+		},
+		{
+			role: 'user',
+			content: `ENTITY TYPES:
 ${context.entity_types ?? 'No entity types provided.'}
 
 SOURCE DESCRIPTION:
@@ -70,22 +70,22 @@ GUIDELINES:
 - Do NOT extract date properties as entities
 - Classify each entity with the most appropriate entity_type_id from ENTITY TYPES
 
-Respond with JSON: {"extracted_entities": [{"name": "...", "entity_type_id": ...}, ...]}`
-    }
-  ];
+Respond with JSON: {"extracted_entities": [{"name": "...", "entity_type_id": ...}, ...]}`,
+		},
+	];
 }
 
 export function extractText(context: Record<string, unknown>): Message[] {
-  return [
-    {
-      role: 'system',
-      content:
-        'You are an AI assistant that extracts entity nodes from text. ' +
-        'Your primary task is to extract and classify significant entities mentioned in the provided text.'
-    },
-    {
-      role: 'user',
-      content: `ENTITY TYPES:
+	return [
+		{
+			role: 'system',
+			content:
+				'You are an AI assistant that extracts entity nodes from text. ' +
+				'Your primary task is to extract and classify significant entities mentioned in the provided text.',
+		},
+		{
+			role: 'user',
+			content: `ENTITY TYPES:
 ${context.entity_types ?? 'No entity types provided.'}
 
 TEXT:
@@ -100,21 +100,21 @@ GUIDELINES:
 - Be explicit with full names (e.g., "John Smith" not "John")
 - Classify each entity with the most appropriate entity_type_id from ENTITY TYPES
 ${context.custom_extraction_instructions ? `\nADDITIONAL INSTRUCTIONS:\n${context.custom_extraction_instructions}` : ''}
-Respond with JSON: {"extracted_entities": [{"name": "...", "entity_type_id": ...}, ...]}`
-    }
-  ];
+Respond with JSON: {"extracted_entities": [{"name": "...", "entity_type_id": ...}, ...]}`,
+		},
+	];
 }
 
 export function classifyNodes(context: Record<string, unknown>): Message[] {
-  return [
-    {
-      role: 'system',
-      content:
-        'You are an AI assistant that classifies entity nodes given the context from which they were extracted.'
-    },
-    {
-      role: 'user',
-      content: `PREVIOUS MESSAGES:
+	return [
+		{
+			role: 'system',
+			content:
+				'You are an AI assistant that classifies entity nodes given the context from which they were extracted.',
+		},
+		{
+			role: 'user',
+			content: `PREVIOUS MESSAGES:
 ${context.previous_messages ?? 'None'}
 
 CURRENT MESSAGE:
@@ -134,47 +134,56 @@ GUIDELINES:
 - Only use types from the ENTITY TYPES list
 - Set entity_type_id to 0 if no matching type exists
 
-Respond with JSON: {"extracted_entities": [{"name": "...", "entity_type_id": ...}, ...]}`
-    }
-  ];
+Respond with JSON: {"extracted_entities": [{"name": "...", "entity_type_id": ...}, ...]}`,
+		},
+	];
 }
 
 export function extractAttributes(context: Record<string, unknown>): Message[] {
-  return [
-    {
-      role: 'system',
-      content: 'You are a helpful assistant that extracts entity properties from the provided text.'
-    },
-    {
-      role: 'user',
-      content: `MESSAGES:
-${context.messages ?? ''}
+	return [
+		{
+			role: 'system',
+			content:
+				'You extract structured entity attributes from source text. Field descriptions ' +
+				'are format requirements, not values. Never include reasoning, alternatives, ' +
+				'schema text, or explanations in attribute values.',
+		},
+		{
+			role: 'user',
+			content: `CURRENT MESSAGE:
+${context.episode_content ?? ''}
+
+PREVIOUS MESSAGES:
+${JSON.stringify(context.previous_episodes ?? [])}
 
 ENTITY:
-${context.entity ?? ''}
+${JSON.stringify(context.node ?? {})}
 
 TASK:
-Update the entity's attributes based on information from the MESSAGES.
+Update the entity's attributes based only on the CURRENT MESSAGE and PREVIOUS MESSAGES.
 
 GUIDELINES:
 - Only extract values explicitly stated in the messages
 - Do not hallucinate or infer values not in the text
 - Preserve existing attribute values unless new information supersedes them
+- Do not copy field descriptions, examples, or schema text into values
+- Do not include parenthetical reasoning, candidate alternatives, or phrases like "could be", "likely", "N/A", "null", or "unknown"
+- Use null only as JSON null when the schema requires a value and the text gives no value
 
-Respond with JSON containing the updated attributes object.`
-    }
-  ];
+Respond with JSON containing the updated attributes object.`,
+		},
+	];
 }
 
 export function extractSummary(context: Record<string, unknown>): Message[] {
-  return [
-    {
-      role: 'system',
-      content: 'You are a helpful assistant that extracts entity summaries from the provided text.'
-    },
-    {
-      role: 'user',
-      content: `MESSAGES:
+	return [
+		{
+			role: 'system',
+			content: 'You are a helpful assistant that extracts entity summaries from the provided text.',
+		},
+		{
+			role: 'user',
+			content: `MESSAGES:
 ${context.messages ?? ''}
 
 ENTITY:
@@ -185,21 +194,21 @@ Generate an updated summary for this entity combining all relevant information f
 
 ${SUMMARY_INSTRUCTIONS}
 
-Respond with JSON: {"summary": "..."}`
-    }
-  ];
+Respond with JSON: {"summary": "..."}`,
+		},
+	];
 }
 
 export function extractSummariesBatch(context: Record<string, unknown>): Message[] {
-  return [
-    {
-      role: 'system',
-      content:
-        'You are a helpful assistant that generates concise entity summaries from provided context.'
-    },
-    {
-      role: 'user',
-      content: `MESSAGES:
+	return [
+		{
+			role: 'system',
+			content:
+				'You are a helpful assistant that generates concise entity summaries from provided context.',
+		},
+		{
+			role: 'user',
+			content: `MESSAGES:
 ${context.messages ?? ''}
 
 ENTITIES:
@@ -212,7 +221,7 @@ ${SUMMARY_INSTRUCTIONS}
 
 Only return summaries with meaningful information.
 
-Respond with JSON: {"summaries": [{"name": "...", "summary": "..."}, ...]}`
-    }
-  ];
+Respond with JSON: {"summaries": [{"name": "...", "summary": "..."}, ...]}`,
+		},
+	];
 }

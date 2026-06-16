@@ -34,6 +34,31 @@ These additions are non-breaking: they extend `EntityEdge`, add optional APIs su
 
 Compatibility note: the lifecycle and reasoning fields added to `EntityEdge` are additive. No schema migration is required, but consumers that serialize and strictly decode edge payloads should tolerate new optional fields such as `conditions`, `interpretations`, confidence bands, epistemic metadata, and deprecation metadata.
 
+## LLM Structured Output & Attribute Guards
+
+`OpenAIGenericClient` uses native `json_schema` structured output whenever a response model is supplied. If an OpenAI-compatible endpoint rejects `json_schema`, the client falls back to the prior `json_object` prompt path. To force the old behavior:
+
+```typescript
+const llm = new OpenAIGenericClient({
+  config: { base_url: 'http://localhost:11434/v1', api_key: 'ollama' },
+  structured_output_mode: 'json_object'
+});
+```
+
+Structured node and edge attributes are also guarded before persistence. Empty placeholders such as `null`, `none`, `n/a`, and `unknown` are dropped, and overlong strings are rejected. Use schema `maxLength`/`max_length` per field, or set `GRAPHITI_ATTRIBUTE_MAX_LENGTH` for a deployment-wide default.
+
+## MCP Notes
+
+The MCP server accepts `group_ids` as either a single string or an array for tools such as `search_nodes`, `search_memory_facts`, `get_episodes`, and `clear_graph`:
+
+```json
+{ "group_ids": "research" }
+```
+
+```json
+{ "group_ids": ["research", "ops"] }
+```
+
 ## Release Workflow
 
 This repo treats `dist/` as a release artifact rather than a source-of-truth during normal iteration.

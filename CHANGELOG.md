@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.2.5
+
+### Upstream fix parity and provider hardening
+
+- **Search filter hardening:** `property_filters.property_name` now validates as a safe Cypher identifier before query construction. This closes an injection-shaped footgun for dynamic edge property filters and reuses the same identifier rules as node labels.
+- **Structured attribute guards:** Node and edge attribute extraction now drops empty/null-stand-in strings (`null`, `none`, `n/a`, `unknown`) and overlong generated strings before merging LLM output into graph records. Field schemas can set `maxLength`/`max_length`; otherwise `GRAPHITI_ATTRIBUTE_MAX_LENGTH` or the built-in default applies.
+- **Prompt tightening:** Node and edge attribute prompts now explicitly require source-supported values and discourage guessed or placeholder attributes.
+- **OpenAI-compatible structured output:** `OpenAIGenericClient` now prefers native `json_schema` response format when a response model is provided, with automatic fallback to the prior `json_object` prompt path for providers that do not support `json_schema`. Set `structured_output_mode: 'json_object'` to force the old behavior.
+- **MCP `group_ids` compatibility:** MCP tools now accept either a scalar group id (`"team-a"`) or an array (`["team-a"]`) for `search_nodes`, `search_memory_facts`, `get_episodes`, and `clear_graph`.
+
 ## v0.2.4
 
 ### Temporal filter correctness (fixes silent empty results)
