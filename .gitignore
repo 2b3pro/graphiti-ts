@@ -8,3 +8,4 @@ dump.rdb
 .DS_Store
 *.log
 *.tsbuildinfo
+docs/
